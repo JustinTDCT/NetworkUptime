@@ -441,6 +441,27 @@ const requireUser = async (request: FastifyRequest, reply: FastifyReply): Promis
   }
 };
 
+const publicReadOnlyEnabled = async (): Promise<boolean> => {
+  const settings = await prisma.serverSettings.findUnique({ where: { id: "default" } });
+  return settings?.publicReadOnly ?? false;
+};
+
+const requireUserOrPublicReadOnly = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> => {
+  try {
+    await request.jwtVerify();
+    return;
+  } catch {
+    if (request.method === "GET" && (await publicReadOnlyEnabled())) {
+      return;
+    }
+  }
+
+  await reply.code(401).send({ error: "Authentication required." });
+};
+
 const requireAgentKey = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
   const token = bearerToken(request.headers.authorization);
   if (!token) {
@@ -467,14 +488,7 @@ const ensureBootstrapData = async (config: ServerRuntimeConfig): Promise<void> =
       ipBlocklist: JSON.stringify(config.settings.ipBlocklist),
       publicReadOnly: config.settings.publicReadOnly
     },
-    update: {
-      serverAddress: config.settings.serverAddress,
-      serverPort: config.settings.serverPort,
-      ipListMode: ipModeToDb(config.settings.ipListMode),
-      ipAllowlist: JSON.stringify(config.settings.ipAllowlist),
-      ipBlocklist: JSON.stringify(config.settings.ipBlocklist),
-      publicReadOnly: config.settings.publicReadOnly
-    }
+    update: {}
   });
 
   await prisma.alertSettings.upsert({
@@ -557,6 +571,15 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
 
   app.get("/api/auth/me", { preHandler: requireUser }, async (request) => {
     return { user: request.user };
+  });
+
+  app.get("/api/auth/status", async (request) => {
+    try {
+      await request.jwtVerify();
+      return { user: request.user, publicReadOnly: await publicReadOnlyEnabled() };
+    } catch {
+      return { user: null, publicReadOnly: await publicReadOnlyEnabled() };
+    }
   });
 
   app.post("/api/auth/logout", async (_request, reply) => {
@@ -646,7 +669,7 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
     return reply.code(202).send({ agent });
   });
 
-  app.get("/api/agents", { preHandler: requireUser }, async () => {
+  app.get("/api/agents", { preHandler: requireUserOrPublicReadOnly }, async () => {
     return {
       agents: await prisma.agent.findMany({ orderBy: { name: "asc" } })
     };
@@ -742,7 +765,7 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
     return alertSettingsFromDb(settings);
   });
 
-  app.get("/api/alerts/events", { preHandler: requireUser }, async () => {
+  app.get("/api/alerts/events", { preHandler: requireUserOrPublicReadOnly }, async () => {
     return {
       events: await prisma.alertEvent.findMany({
         include: { monitor: true },
@@ -752,7 +775,7 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
     };
   });
 
-  app.get("/api/monitors", { preHandler: requireUser }, async () => {
+  app.get("/api/monitors", { preHandler: requireUserOrPublicReadOnly }, async () => {
     return {
       monitors: await prisma.monitor.findMany({
         include: {

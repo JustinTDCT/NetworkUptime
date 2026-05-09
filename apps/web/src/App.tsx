@@ -95,6 +95,7 @@ export const App = () => {
   const [serverSettings, setServerSettings] = useState<ServerSettings | null>(null);
   const [alertEvents, setAlertEvents] = useState<AlertEvent[]>([]);
   const [authenticated, setAuthenticated] = useState(false);
+  const [publicReadOnly, setPublicReadOnly] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [activePage, setActivePage] = useState<AppPage>("dashboard");
   const [loginError, setLoginError] = useState("");
@@ -114,14 +115,19 @@ export const App = () => {
   );
 
   const loadDashboard = async () => {
-    const [sessionResponse, agentResponse, monitorResponse, alertSettingsResponse, serverSettingsResponse, eventsResponse] = await Promise.all([
-      api<{ user: AuthUser }>("/api/auth/me"),
+    const sessionResponse = await api<{ user: AuthUser | null; publicReadOnly: boolean }>("/api/auth/status");
+    if (!sessionResponse.user && !sessionResponse.publicReadOnly) {
+      throw new Error("Authentication required.");
+    }
+
+    const [agentResponse, monitorResponse, eventsResponse] = await Promise.all([
       api<{ agents: Agent[] }>("/api/agents"),
       api<{ monitors: Monitor[] }>("/api/monitors"),
-      api<AlertSettings>("/api/settings/alerts"),
-      api<ServerSettings>("/api/settings/server"),
       api<{ events: AlertEvent[] }>("/api/alerts/events")
     ]);
+    const [alertSettingsResponse, serverSettingsResponse] = sessionResponse.user
+      ? await Promise.all([api<AlertSettings>("/api/settings/alerts"), api<ServerSettings>("/api/settings/server")])
+      : [null, null];
 
     setCurrentUser(sessionResponse.user);
     setAgents(agentResponse.agents);
@@ -129,12 +135,14 @@ export const App = () => {
     setAlertSettings(alertSettingsResponse);
     setServerSettings(serverSettingsResponse);
     setAlertEvents(eventsResponse.events);
-    setAuthenticated(true);
+    setAuthenticated(Boolean(sessionResponse.user));
+    setPublicReadOnly(sessionResponse.publicReadOnly);
   };
 
   useEffect(() => {
     loadDashboard().catch(() => {
       setAuthenticated(false);
+      setPublicReadOnly(false);
       setCurrentUser(null);
     });
     const timer = setInterval(() => loadDashboard().catch(() => undefined), 15_000);
@@ -159,6 +167,7 @@ export const App = () => {
   const logout = async () => {
     await api("/api/auth/logout", { method: "POST" });
     setAuthenticated(false);
+    setPublicReadOnly(false);
     setCurrentUser(null);
     setAgents([]);
     setMonitors([]);
@@ -166,6 +175,7 @@ export const App = () => {
     setServerSettings(null);
     setAlertEvents([]);
     setActivePage("dashboard");
+    await loadDashboard().catch(() => undefined);
   };
 
   const createMonitor = async (event: FormEvent<HTMLFormElement>) => {
@@ -252,7 +262,7 @@ export const App = () => {
     await loadDashboard();
   };
 
-  if (!authenticated) {
+  if (!authenticated && !publicReadOnly) {
     return (
       <>
         <Header
@@ -261,6 +271,7 @@ export const App = () => {
           currentUser={currentUser}
           onLogin={() => document.getElementById("login")?.scrollIntoView({ behavior: "smooth" })}
           onRefresh={() => loadDashboard().catch(() => undefined)}
+          publicReadOnly={publicReadOnly}
         />
         <main>
           <section className="card" id="login">
@@ -284,7 +295,7 @@ export const App = () => {
     );
   }
 
-  if (activePage === "settings") {
+  if (activePage === "settings" && authenticated) {
     return (
       <>
         <Header
@@ -295,6 +306,7 @@ export const App = () => {
           onLogout={() => logout().catch(() => undefined)}
           onRefresh={() => loadDashboard().catch(() => undefined)}
           onSettings={() => setActivePage("settings")}
+          publicReadOnly={publicReadOnly}
         />
         <main>
           <div className="toolbar">
@@ -411,6 +423,7 @@ export const App = () => {
         onLogout={() => logout().catch(() => undefined)}
         onRefresh={() => loadDashboard().catch(() => undefined)}
         onSettings={() => setActivePage("settings")}
+        publicReadOnly={publicReadOnly}
       />
       <main>
         <div className="toolbar">
@@ -430,57 +443,59 @@ export const App = () => {
         </section>
 
         <div className="grid top-gap">
-          <section className="card">
-            <h2>Create Monitor</h2>
-            <form onSubmit={createMonitor}>
-              <label>
-                Friendly name <input name="friendlyName" required />
-              </label>
-              <label>
-                Description <textarea name="description" rows={3} />
-              </label>
-              <label>
-                Parent agent
-                <select name="parentAgentId" required>
-                  {agents.map((agent) => (
-                    <option value={agent.id} key={agent.id}>
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Parent monitor
-                <select name="parentMonitorId">
-                  <option value="">None</option>
-                  {monitors.map((monitor) => (
-                    <option value={monitor.id} key={monitor.id}>
-                      {monitor.friendlyName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Target <input name="target" placeholder="https://example.com or host:port" required />
-              </label>
-              <label>
-                Type
-                <select name="type">
-                  <option value="up_down">Up / Down</option>
-                  <option value="ssl">SSL Certificate</option>
-                  <option value="http_https">HTTP/HTTPS Content</option>
-                </select>
-              </label>
-              <label>
-                Warning cycles override <input name="upDownWarningCycles" type="number" min="1" placeholder="Use global" />
-              </label>
-              <label>
-                Down cycles override <input name="upDownDownCycles" type="number" min="1" placeholder="Use global" />
-              </label>
-              <button>Create monitor</button>
-            </form>
-            <p className="muted">{monitorError}</p>
-          </section>
+          {authenticated ? (
+            <section className="card">
+              <h2>Create Monitor</h2>
+              <form onSubmit={createMonitor}>
+                <label>
+                  Friendly name <input name="friendlyName" required />
+                </label>
+                <label>
+                  Description <textarea name="description" rows={3} />
+                </label>
+                <label>
+                  Parent agent
+                  <select name="parentAgentId" required>
+                    {agents.map((agent) => (
+                      <option value={agent.id} key={agent.id}>
+                        {agent.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Parent monitor
+                  <select name="parentMonitorId">
+                    <option value="">None</option>
+                    {monitors.map((monitor) => (
+                      <option value={monitor.id} key={monitor.id}>
+                        {monitor.friendlyName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Target <input name="target" placeholder="https://example.com or host:port" required />
+                </label>
+                <label>
+                  Type
+                  <select name="type">
+                    <option value="up_down">Up / Down</option>
+                    <option value="ssl">SSL Certificate</option>
+                    <option value="http_https">HTTP/HTTPS Content</option>
+                  </select>
+                </label>
+                <label>
+                  Warning cycles override <input name="upDownWarningCycles" type="number" min="1" placeholder="Use global" />
+                </label>
+                <label>
+                  Down cycles override <input name="upDownDownCycles" type="number" min="1" placeholder="Use global" />
+                </label>
+                <button>Create monitor</button>
+              </form>
+              <p className="muted">{monitorError}</p>
+            </section>
+          ) : null}
 
           <section className="card">
             <h2>Agents</h2>
@@ -541,7 +556,7 @@ export const App = () => {
                             <span className="muted">Parent: {monitor.parentMonitor.friendlyName}</span>
                           </>
                         ) : null}
-                        {monitor.proposedResponse && !monitor.expectedResponse ? (
+                        {authenticated && monitor.proposedResponse && !monitor.expectedResponse ? (
                           <>
                             <br />
                             <button onClick={() => approveHttpSignature(monitor.id)}>Approve scanned content</button>
@@ -588,9 +603,11 @@ export const App = () => {
                         )}
                       </td>
                       <td>
-                        <button className="secondary" onClick={() => deleteMonitor(monitor.id)}>
-                          Delete
-                        </button>
+                        {authenticated ? (
+                          <button className="secondary" onClick={() => deleteMonitor(monitor.id)}>
+                            Delete
+                          </button>
+                        ) : null}
                       </td>
                     </tr>
                   );
@@ -650,7 +667,8 @@ const Header = ({
   onLogin,
   onLogout,
   onRefresh,
-  onSettings
+  onSettings,
+  publicReadOnly
 }: {
   authenticated: boolean;
   activePage: AppPage;
@@ -660,13 +678,16 @@ const Header = ({
   onLogout?: () => void;
   onRefresh: () => void;
   onSettings?: () => void;
+  publicReadOnly: boolean;
 }) => (
   <header>
     <div>
       <strong>NetworkUptime</strong> <span className="muted">server dashboard</span>
     </div>
     <div className="header-actions">
-      <span className="muted">{currentUser ? `Logged in as ${currentUser.username}` : ""}</span>
+      <span className="muted">
+        {currentUser ? `Logged in as ${currentUser.username}` : publicReadOnly ? "Public read-only" : ""}
+      </span>
       {authenticated ? (
         <button className="secondary" disabled={activePage === "dashboard"} onClick={onDashboard}>
           Dashboard

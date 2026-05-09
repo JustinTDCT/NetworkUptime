@@ -159,6 +159,19 @@ describe("server API", () => {
       ipBlocklist: [],
       publicReadOnly: true
     });
+
+    const publicMonitors = await app.inject({
+      method: "GET",
+      url: "/api/monitors"
+    });
+    expect(publicMonitors.statusCode).toBe(200);
+
+    const publicCreate = await app.inject({
+      method: "POST",
+      url: "/api/monitors",
+      payload: {}
+    });
+    expect(publicCreate.statusCode).toBe(401);
   });
 
   it("registers an agent and assigns created monitors", async () => {
