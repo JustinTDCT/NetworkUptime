@@ -584,7 +584,10 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
 
   app.post("/api/auth/logout", async (_request, reply) => {
     reply.clearCookie("networkuptime_session", {
-      path: "/"
+      httpOnly: true,
+      path: "/",
+      sameSite: "strict",
+      secure: true
     });
 
     return { ok: true };

@@ -131,6 +131,8 @@ describe("server API", () => {
 
     expect(logout.statusCode).toBe(200);
     expect(logout.headers["set-cookie"]).toContain("networkuptime_session=;");
+    expect(logout.headers["set-cookie"]).toContain("Secure");
+    expect(logout.headers["set-cookie"]).toContain("SameSite=Strict");
   });
 
   it("updates server settings without requiring agent key rotation", async () => {
