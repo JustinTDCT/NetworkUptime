@@ -4,13 +4,16 @@ export type AssignedMonitor = {
   id: string;
   friendlyName: string;
   target: string;
-  type: "up_down";
+  type: "up_down" | "ssl";
 };
 
 export type MonitorCheckResult = {
   monitorId: string;
   status: "up" | "warning" | "down";
   latencyMs?: number;
+  sslValid?: boolean;
+  sslExpiresAt?: string;
+  sslSelfSigned?: boolean;
   message?: string;
   rawDetails?: Record<string, unknown>;
 };

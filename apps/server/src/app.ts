@@ -184,6 +184,38 @@ const calculateUpDownStatus = async (
   return checks.length > 0 ? MonitorStatus.UP : MonitorStatus.UNKNOWN;
 };
 
+const calculateSslStatus = async (
+  monitorId: string,
+  settings: EffectiveAlertSettings
+): Promise<MonitorStatus> => {
+  const check = await prisma.monitorCheck.findFirst({
+    where: { monitorId },
+    orderBy: { checkedAt: "desc" }
+  });
+
+  if (!check) {
+    return MonitorStatus.UNKNOWN;
+  }
+
+  if (!check.sslValid || !check.sslExpiresAt) {
+    return MonitorStatus.DOWN;
+  }
+
+  const daysRemaining = Math.ceil(
+    (check.sslExpiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (daysRemaining <= settings.sslDownDays) {
+    return MonitorStatus.DOWN;
+  }
+
+  if (daysRemaining <= settings.sslWarningDays) {
+    return MonitorStatus.WARNING;
+  }
+
+  return MonitorStatus.UP;
+};
+
 const sendWebhookNotification = async (
   webhookUrl: string | undefined,
   payload: Record<string, unknown>
@@ -221,10 +253,17 @@ const evaluateMonitorState = async (
     monitor.overrideSettings
   );
   const previousStatus = monitor.status;
-  const calculatedStatus =
-    monitor.type === MonitorType.UP_DOWN
-      ? await calculateUpDownStatus(monitor.id, settings)
-      : monitor.status;
+  const calculatedStatus = await (async () => {
+    if (monitor.type === MonitorType.UP_DOWN) {
+      return calculateUpDownStatus(monitor.id, settings);
+    }
+
+    if (monitor.type === MonitorType.SSL) {
+      return calculateSslStatus(monitor.id, settings);
+    }
+
+    return monitor.status;
+  })();
   const suppressedByMonitorId =
     monitor.parentMonitor &&
     (monitor.parentMonitor.status === MonitorStatus.WARNING ||
@@ -520,7 +559,9 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
     const monitors = await prisma.monitor.findMany({
       where: {
         parentAgentId: params.id,
-        type: MonitorType.UP_DOWN
+        type: {
+          in: [MonitorType.UP_DOWN, MonitorType.SSL]
+        }
       },
       orderBy: { friendlyName: "asc" }
     });
@@ -530,7 +571,7 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
         id: monitor.id,
         friendlyName: monitor.friendlyName,
         target: monitor.target,
-        type: "up_down"
+        type: monitor.type === MonitorType.SSL ? "ssl" : "up_down"
       }))
     };
   });
@@ -555,6 +596,9 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
         monitorId: input.monitorId,
         status,
         latencyMs: input.latencyMs,
+        sslValid: input.sslValid,
+        sslExpiresAt: input.sslExpiresAt ? new Date(input.sslExpiresAt) : undefined,
+        sslSelfSigned: input.sslSelfSigned,
         message: input.message,
         rawDetails: input.rawDetails ? JSON.stringify(input.rawDetails) : undefined
       }

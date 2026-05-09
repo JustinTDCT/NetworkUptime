@@ -129,6 +129,9 @@ export const monitorCheckResultSchema = z.object({
   monitorId: uuidSchema,
   status: z.enum(["up", "warning", "down"]),
   latencyMs: z.coerce.number().int().min(0).optional(),
+  sslValid: z.boolean().optional(),
+  sslExpiresAt: z.string().datetime().optional(),
+  sslSelfSigned: z.boolean().optional(),
   message: z.string().max(1000).optional(),
   rawDetails: z.record(z.string(), z.unknown()).optional()
 });

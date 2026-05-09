@@ -1,5 +1,6 @@
 import net from "node:net";
 import { performance } from "node:perf_hooks";
+import tls from "node:tls";
 import { type AssignedMonitor, type MonitorCheckResult } from "./client.js";
 
 const timeoutMs = 5000;
@@ -79,6 +80,102 @@ export const runUpDownCheck = async (monitor: AssignedMonitor): Promise<MonitorC
       status: "down",
       latencyMs,
       message: error instanceof Error ? error.message : "Check failed",
+      rawDetails: { target: monitor.target, timeoutMs }
+    };
+  }
+};
+
+const parseSslTarget = (target: string): { host: string; port: number; servername: string } => {
+  const url = URL.canParse(target) ? new URL(target) : undefined;
+  if (url) {
+    return {
+      host: url.hostname,
+      port: url.port ? Number(url.port) : 443,
+      servername: url.hostname
+    };
+  }
+
+  const { host, port } = parseHostTarget(target);
+  return {
+    host,
+    port: port === 80 ? 443 : port,
+    servername: host
+  };
+};
+
+export const runSslCheck = async (monitor: AssignedMonitor): Promise<MonitorCheckResult> => {
+  const started = performance.now();
+
+  try {
+    const { host, port, servername } = parseSslTarget(monitor.target);
+    const certificate = await new Promise<tls.PeerCertificate>((resolve, reject) => {
+      const socket = tls.connect({
+        host,
+        port,
+        servername,
+        rejectUnauthorized: false
+      });
+      const timer = setTimeout(() => {
+        socket.destroy();
+        reject(new Error(`Timed out connecting to ${host}:${port}`));
+      }, timeoutMs);
+
+      socket.once("secureConnect", () => {
+        clearTimeout(timer);
+        const peerCertificate = socket.getPeerCertificate();
+        socket.end();
+        if (!peerCertificate || Object.keys(peerCertificate).length === 0) {
+          reject(new Error("No certificate was presented."));
+          return;
+        }
+
+        resolve(peerCertificate);
+      });
+      socket.once("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
+    const latencyMs = Math.round(performance.now() - started);
+    const expiresAt = new Date(certificate.valid_to);
+    const now = new Date();
+    const certificateWithIssuer = certificate as tls.PeerCertificate & {
+      issuerCertificate?: tls.PeerCertificate;
+    };
+    const selfSigned =
+      certificateWithIssuer.issuerCertificate?.fingerprint === certificate.fingerprint ||
+      certificate.issuer?.CN === certificate.subject?.CN;
+    const valid = expiresAt.getTime() > now.getTime();
+
+    return {
+      monitorId: monitor.id,
+      status: valid ? "up" : "down",
+      latencyMs,
+      sslValid: valid,
+      sslExpiresAt: expiresAt.toISOString(),
+      sslSelfSigned: selfSigned,
+      message: valid
+        ? `Certificate expires ${expiresAt.toISOString()}`
+        : `Certificate expired ${expiresAt.toISOString()}`,
+      rawDetails: {
+        mode: "ssl",
+        target: monitor.target,
+        subject: certificate.subject,
+        issuer: certificate.issuer,
+        validFrom: certificate.valid_from,
+        validTo: certificate.valid_to,
+        fingerprint: certificate.fingerprint,
+        selfSigned
+      }
+    };
+  } catch (error) {
+    const latencyMs = Math.round(performance.now() - started);
+    return {
+      monitorId: monitor.id,
+      status: "down",
+      latencyMs,
+      sslValid: false,
+      message: error instanceof Error ? error.message : "SSL check failed",
       rawDetails: { target: monitor.target, timeoutMs }
     };
   }
