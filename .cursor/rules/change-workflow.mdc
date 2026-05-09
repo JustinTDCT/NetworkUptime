@@ -7,5 +7,8 @@ alwaysApply: true
 
 - After each completed code or configuration change, rebuild Docker so the latest app can be tested.
 - Use the repository's existing Docker workflow when possible; prefer `docker compose build` unless a more specific project command is clearly established.
+- Use `sudo` when needed to complete approved project maintenance tasks, such as Docker rebuilds or dependency installation.
+- Install software as needed when it is required to complete the user's requested project work.
+- Do not store passwords, tokens, or other secrets in committed files, including Cursor rules.
 - After each completed change, commit the full intended change set and push it to `main`.
 - If a build, commit, or push is blocked by the local environment or permissions, report the blocker clearly and leave the repository in the safest completed state.
