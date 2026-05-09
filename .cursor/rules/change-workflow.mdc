@@ -1,0 +1,11 @@
+---
+description: Project workflow for changes, Docker rebuilds, and publishing to main
+alwaysApply: true
+---
+
+# Change Workflow
+
+- After each completed code or configuration change, rebuild Docker so the latest app can be tested.
+- Use the repository's existing Docker workflow when possible; prefer `docker compose build` unless a more specific project command is clearly established.
+- After each completed change, commit the full intended change set and push it to `main`.
+- If a build, commit, or push is blocked by the local environment or permissions, report the blocker clearly and leave the repository in the safest completed state.
