@@ -11,7 +11,7 @@ services:
       SERVER_AGENT_KEY: ${SERVER_AGENT_KEY:-00000000-0000-4000-8000-000000000001}
       JWT_SECRET: ${JWT_SECRET:-change-this-development-secret}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-NetworkUptimeDev123}
       PUBLIC_READ_ONLY: ${PUBLIC_READ_ONLY:-false}
       TLS_CERT_FILE: /certs/dev.crt
       TLS_KEY_FILE: /certs/dev.key

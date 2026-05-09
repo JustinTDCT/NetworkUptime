@@ -6,8 +6,8 @@ NetworkUptime is a Docker-based network monitoring foundation with a server and 
 
 - Server and agent TypeScript apps in a pnpm monorepo.
 - HTTPS server support through configured TLS certificate and key files.
-- SQLite-backed Prisma schema for users, settings, agents, monitors, monitor history, dependencies, and alert settings.
-- Default admin bootstrap with username `admin` and password from `ADMIN_PASSWORD`, falling back to `admin`.
+- SQLite-backed Prisma schema with deployable migrations for users, settings, agents, monitors, monitor history, dependencies, and alert settings.
+- Default admin bootstrap with username `admin` and a password from `ADMIN_PASSWORD` or `ADMIN_PASSWORD_FILE`.
 - Agent key authentication using a UUID shared secret stored hashed on the server.
 - IP allow/block mode schema and enforcement for agent endpoints.
 - Basic dashboard at `https://localhost:8443`.
@@ -35,6 +35,8 @@ docker compose --profile agent up --build
 
 The Docker server image generates a development self-signed certificate. The agent profile sets `NODE_TLS_REJECT_UNAUTHORIZED=0` so local check-ins work against that certificate. Use a real certificate and remove that setting for production.
 
+The server stores SQLite data in the `server-data` Docker volume at `/data/networkuptime.db`. Startup runs `prisma migrate deploy`; existing development databases created before migrations are baselined automatically on first boot.
+
 Open the UI at:
 
 ```text
@@ -59,9 +61,30 @@ Important server variables:
 - `SERVER_PORT`: server listen port.
 - `SERVER_AGENT_KEY`: UUID key agents use to authenticate.
 - `ADMIN_USERNAME`: defaults to `admin`.
-- `ADMIN_PASSWORD`: defaults to `admin` when unset.
+- `ADMIN_PASSWORD`: initial admin password. It must be at least 12 characters and include lowercase, uppercase, and a number.
+- `ADMIN_PASSWORD_FILE`: optional file path for the initial admin password, useful with Docker secrets.
 - `TLS_CERT_FILE` and `TLS_KEY_FILE`: enable HTTPS listener.
 - `ALERT_WEBHOOK_URL`: optional webhook target for alert notifications.
+
+## Database Operations
+
+Create and apply local schema migrations while developing:
+
+```sh
+pnpm prisma:migrate:dev
+```
+
+Apply committed migrations in deployed environments:
+
+```sh
+pnpm prisma:migrate:deploy
+```
+
+Back up the SQLite database file:
+
+```sh
+DATABASE_URL=file:/data/networkuptime.db BACKUP_DIR=/data/backups pnpm backup:sqlite
+```
 
 Important agent variables:
 

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
-import { alertSettingsSchema, serverSettingsSchema } from "@networkuptime/shared";
+import { alertSettingsSchema, passwordPolicySchema, serverSettingsSchema } from "@networkuptime/shared";
 
 const serverConfigFileSchema = z
   .object({
@@ -43,12 +43,29 @@ const readConfigFile = async (): Promise<z.infer<typeof serverConfigFileSchema>>
   return serverConfigFileSchema.parse(JSON.parse(raw));
 };
 
+const readSecret = async (valueName: string, fileName: string): Promise<string | undefined> => {
+  const value = process.env[valueName];
+  if (value) {
+    return value;
+  }
+
+  const file = process.env[fileName];
+  if (!file) {
+    return undefined;
+  }
+
+  return (await readFile(file, "utf8")).trim();
+};
+
 export const loadConfig = async (): Promise<ServerRuntimeConfig> => {
   const fileConfig = await readConfigFile();
   const serverPort = Number(process.env.SERVER_PORT ?? fileConfig.server?.serverPort ?? 8443);
   const agentKey = process.env.SERVER_AGENT_KEY ?? fileConfig.server?.agentKey ?? randomUUID();
   const tlsCertFile = process.env.TLS_CERT_FILE;
   const tlsKeyFile = process.env.TLS_KEY_FILE;
+  const adminPassword = passwordPolicySchema.parse(
+    (await readSecret("ADMIN_PASSWORD", "ADMIN_PASSWORD_FILE")) ?? "NetworkUptimeDev123"
+  );
 
   const settings = serverSettingsSchema.parse({
     serverAddress:
@@ -68,7 +85,7 @@ export const loadConfig = async (): Promise<ServerRuntimeConfig> => {
     port: settings.serverPort,
     jwtSecret: process.env.JWT_SECRET ?? randomUUID(),
     adminUsername: process.env.ADMIN_USERNAME ?? "admin",
-    adminPassword: process.env.ADMIN_PASSWORD ?? "admin",
+    adminPassword,
     databaseUrl: process.env.DATABASE_URL ?? "file:./networkuptime.db",
     tls:
       tlsCertFile && tlsKeyFile

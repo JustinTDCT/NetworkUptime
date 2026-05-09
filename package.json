@@ -9,7 +9,10 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "prisma:generate": "pnpm --filter @networkuptime/db prisma:generate",
-    "prisma:push": "pnpm --filter @networkuptime/db prisma:push"
+    "prisma:push": "pnpm --filter @networkuptime/db prisma:push",
+    "prisma:migrate:dev": "pnpm --filter @networkuptime/db prisma:migrate:dev",
+    "prisma:migrate:deploy": "pnpm --filter @networkuptime/db prisma:migrate:deploy",
+    "backup:sqlite": "node scripts/backup-sqlite.mjs"
   },
   "devDependencies": {
     "@types/node": "latest",

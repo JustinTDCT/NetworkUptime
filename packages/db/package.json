@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
-    "prisma:push": "prisma db push --schema prisma/schema.prisma"
+    "prisma:push": "prisma db push --schema prisma/schema.prisma",
+    "prisma:migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
+    "prisma:migrate:resolve:init": "prisma migrate resolve --schema prisma/schema.prisma --applied 20260509144500_init"
   },
   "dependencies": {
     "@prisma/client": "^6"

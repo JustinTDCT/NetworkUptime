@@ -19,10 +19,11 @@ RUN corepack enable && corepack prepare pnpm@10 --activate
 COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
+COPY scripts ./scripts
 
 RUN pnpm install --frozen-lockfile=false
 RUN pnpm --filter @networkuptime/db prisma:generate
 
 EXPOSE 8443
 
-CMD ["sh", "-c", "pnpm --filter @networkuptime/db prisma:push && pnpm --filter @networkuptime/server start"]
+CMD ["sh", "scripts/server-entrypoint.sh"]
