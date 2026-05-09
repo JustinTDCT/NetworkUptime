@@ -19,6 +19,7 @@
     "latencyDownMs": 1000,
     "sslWarningDays": 30,
     "sslDownDays": 7,
-    "httpCycles": 3
+    "httpCycles": 3,
+    "webhookUrl": ""
   }
 }

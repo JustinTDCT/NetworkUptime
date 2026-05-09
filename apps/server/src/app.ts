@@ -3,6 +3,7 @@ import jwt from "@fastify/jwt";
 import { AlertLevel, AlertRepeat, MonitorStatus, MonitorType, prisma } from "@networkuptime/db";
 import {
   agentCheckInSchema,
+  alertSettingsSchema,
   bearerToken,
   loginSchema,
   monitorCheckResultSchema,
@@ -46,6 +47,8 @@ const monitorStatusToDb = (status: "up" | "warning" | "down") => {
   return MonitorStatus.DOWN;
 };
 
+type EffectiveAlertSettings = z.infer<typeof alertSettingsSchema>;
+
 const alertLevelToDb = (level: "warning" | "down") =>
   level === "warning" ? AlertLevel.WARNING : AlertLevel.DOWN;
 
@@ -61,7 +64,7 @@ const alertRepeatToDb = (repeat: "none" | "always" | "status_change_only") => {
   return AlertRepeat.STATUS_CHANGE_ONLY;
 };
 
-const alertSettingsToDb = (settings: ServerRuntimeConfig["alerts"]) => ({
+const alertSettingsToDb = (settings: EffectiveAlertSettings) => ({
   alertLevel: alertLevelToDb(settings.alertLevel),
   repeat: alertRepeatToDb(settings.repeat),
   delaySeconds: settings.delaySeconds,
@@ -72,7 +75,50 @@ const alertSettingsToDb = (settings: ServerRuntimeConfig["alerts"]) => ({
   latencyDownMs: settings.latencyDownMs,
   sslWarningDays: settings.sslWarningDays,
   sslDownDays: settings.sslDownDays,
-  httpCycles: settings.httpCycles
+  httpCycles: settings.httpCycles,
+  webhookUrl: settings.webhookUrl
+});
+
+const alertLevelFromDb = (level: AlertLevel) => (level === AlertLevel.WARNING ? "warning" : "down");
+
+const alertRepeatFromDb = (repeat: AlertRepeat) => {
+  if (repeat === AlertRepeat.NONE) {
+    return "none";
+  }
+
+  if (repeat === AlertRepeat.ALWAYS) {
+    return "always";
+  }
+
+  return "status_change_only";
+};
+
+const alertSettingsFromDb = (settings: {
+  alertLevel: AlertLevel;
+  repeat: AlertRepeat;
+  delaySeconds: number;
+  upDownWarningCycles: number;
+  upDownDownCycles: number;
+  latencyCycles: number;
+  latencyWarningMs: number;
+  latencyDownMs: number;
+  sslWarningDays: number;
+  sslDownDays: number;
+  httpCycles: number;
+  webhookUrl: string | null;
+}): EffectiveAlertSettings => ({
+  alertLevel: alertLevelFromDb(settings.alertLevel),
+  repeat: alertRepeatFromDb(settings.repeat),
+  delaySeconds: settings.delaySeconds,
+  upDownWarningCycles: settings.upDownWarningCycles,
+  upDownDownCycles: settings.upDownDownCycles,
+  latencyCycles: settings.latencyCycles,
+  latencyWarningMs: settings.latencyWarningMs,
+  latencyDownMs: settings.latencyDownMs,
+  sslWarningDays: settings.sslWarningDays,
+  sslDownDays: settings.sslDownDays,
+  httpCycles: settings.httpCycles,
+  webhookUrl: settings.webhookUrl ?? undefined
 });
 
 const parseJsonList = (value: string): string[] => {
@@ -82,6 +128,163 @@ const parseJsonList = (value: string): string[] => {
   } catch {
     return [];
   }
+};
+
+const mergeMonitorAlertSettings = (
+  globalSettings: EffectiveAlertSettings,
+  overrideSettings: string | null
+): EffectiveAlertSettings => {
+  if (!overrideSettings) {
+    return globalSettings;
+  }
+
+  try {
+    return alertSettingsSchema.parse({
+      ...globalSettings,
+      ...JSON.parse(overrideSettings)
+    });
+  } catch {
+    return globalSettings;
+  }
+};
+
+const isAlertStatus = (status: MonitorStatus, level: AlertLevel): boolean => {
+  if (status === MonitorStatus.DOWN) {
+    return true;
+  }
+
+  return level === AlertLevel.WARNING && status === MonitorStatus.WARNING;
+};
+
+const calculateUpDownStatus = async (
+  monitorId: string,
+  settings: EffectiveAlertSettings
+): Promise<MonitorStatus> => {
+  const checks = await prisma.monitorCheck.findMany({
+    where: { monitorId },
+    orderBy: { checkedAt: "desc" },
+    take: Math.max(settings.upDownDownCycles, settings.upDownWarningCycles)
+  });
+
+  if (checks[0]?.status === MonitorStatus.UP) {
+    return MonitorStatus.UP;
+  }
+
+  const consecutiveFailures = checks.findIndex((check) => check.status === MonitorStatus.UP);
+  const failureCount = consecutiveFailures === -1 ? checks.length : consecutiveFailures;
+
+  if (failureCount >= settings.upDownDownCycles) {
+    return MonitorStatus.DOWN;
+  }
+
+  if (failureCount >= settings.upDownWarningCycles) {
+    return MonitorStatus.WARNING;
+  }
+
+  return checks.length > 0 ? MonitorStatus.UP : MonitorStatus.UNKNOWN;
+};
+
+const sendWebhookNotification = async (
+  webhookUrl: string | undefined,
+  payload: Record<string, unknown>
+): Promise<string | undefined> => {
+  if (!webhookUrl) {
+    return undefined;
+  }
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    return `Webhook returned ${response.status}: ${await response.text()}`;
+  }
+
+  return undefined;
+};
+
+const evaluateMonitorState = async (
+  monitorId: string,
+  message?: string
+): Promise<MonitorStatus> => {
+  const [monitor, globalAlertSettings] = await Promise.all([
+    prisma.monitor.findUniqueOrThrow({
+      where: { id: monitorId },
+      include: { parentMonitor: true }
+    }),
+    prisma.alertSettings.findUniqueOrThrow({ where: { id: "global" } })
+  ]);
+  const settings = mergeMonitorAlertSettings(
+    alertSettingsFromDb(globalAlertSettings),
+    monitor.overrideSettings
+  );
+  const previousStatus = monitor.status;
+  const calculatedStatus =
+    monitor.type === MonitorType.UP_DOWN
+      ? await calculateUpDownStatus(monitor.id, settings)
+      : monitor.status;
+  const suppressedByMonitorId =
+    monitor.parentMonitor &&
+    (monitor.parentMonitor.status === MonitorStatus.WARNING ||
+      monitor.parentMonitor.status === MonitorStatus.DOWN ||
+      monitor.parentMonitor.status === MonitorStatus.SUPPRESSED)
+      ? monitor.parentMonitor.id
+      : undefined;
+  const newStatus = suppressedByMonitorId ? MonitorStatus.SUPPRESSED : calculatedStatus;
+
+  await prisma.monitor.update({
+    where: { id: monitor.id },
+    data: { status: newStatus }
+  });
+
+  const statusChanged = previousStatus !== newStatus;
+  const meetsAlertLevel = isAlertStatus(newStatus, globalAlertSettings.alertLevel);
+  const recovered = previousStatus !== MonitorStatus.UP && newStatus === MonitorStatus.UP;
+  const shouldNotify =
+    globalAlertSettings.repeat === AlertRepeat.ALWAYS
+      ? meetsAlertLevel
+      : globalAlertSettings.repeat === AlertRepeat.STATUS_CHANGE_ONLY
+        ? statusChanged && (meetsAlertLevel || recovered)
+        : statusChanged && meetsAlertLevel && !isAlertStatus(previousStatus, globalAlertSettings.alertLevel);
+
+  if (statusChanged || shouldNotify) {
+    const event = await prisma.alertEvent.create({
+      data: {
+        monitorId: monitor.id,
+        previousStatus,
+        newStatus,
+        message,
+        suppressedByMonitorId,
+        notified: false
+      }
+    });
+
+    if (shouldNotify && globalAlertSettings.webhookUrl) {
+      const notificationError = await sendWebhookNotification(globalAlertSettings.webhookUrl, {
+        eventId: event.id,
+        monitorId: monitor.id,
+        monitorName: monitor.friendlyName,
+        target: monitor.target,
+        previousStatus,
+        newStatus,
+        message,
+        suppressedByMonitorId,
+        createdAt: event.createdAt
+      });
+
+      await prisma.alertEvent.update({
+        where: { id: event.id },
+        data: {
+          notified: !notificationError,
+          notificationError
+        }
+      });
+    }
+  }
+
+  return newStatus;
 };
 
 const clientIp = (request: FastifyRequest): string => {
@@ -357,12 +560,34 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
       }
     });
 
-    await prisma.monitor.update({
-      where: { id: input.monitorId },
-      data: { status }
+    const effectiveStatus = await evaluateMonitorState(input.monitorId, input.message);
+
+    return reply.code(201).send({ check, effectiveStatus });
+  });
+
+  app.get("/api/settings/alerts", { preHandler: requireUser }, async () => {
+    const settings = await prisma.alertSettings.findUniqueOrThrow({ where: { id: "global" } });
+    return alertSettingsFromDb(settings);
+  });
+
+  app.put("/api/settings/alerts", { preHandler: requireUser }, async (request) => {
+    const input = alertSettingsSchema.parse(request.body);
+    const settings = await prisma.alertSettings.update({
+      where: { id: "global" },
+      data: alertSettingsToDb(input)
     });
 
-    return reply.code(201).send({ check });
+    return alertSettingsFromDb(settings);
+  });
+
+  app.get("/api/alerts/events", { preHandler: requireUser }, async () => {
+    return {
+      events: await prisma.alertEvent.findMany({
+        include: { monitor: true },
+        orderBy: { createdAt: "desc" },
+        take: 50
+      })
+    };
   });
 
   app.get("/api/monitors", { preHandler: requireUser }, async () => {

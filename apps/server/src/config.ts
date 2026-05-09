@@ -82,7 +82,8 @@ export const loadConfig = async (): Promise<ServerRuntimeConfig> => {
       ...fileConfig.alerts,
       alertLevel: process.env.ALERT_LEVEL ?? fileConfig.alerts?.alertLevel,
       repeat: process.env.ALERT_REPEAT ?? fileConfig.alerts?.repeat,
-      delaySeconds: process.env.ALERT_DELAY_SECONDS ?? fileConfig.alerts?.delaySeconds
+      delaySeconds: process.env.ALERT_DELAY_SECONDS ?? fileConfig.alerts?.delaySeconds,
+      webhookUrl: process.env.ALERT_WEBHOOK_URL ?? fileConfig.alerts?.webhookUrl
     })
   };
 };

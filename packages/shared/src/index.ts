@@ -106,7 +106,8 @@ export const alertSettingsSchema = z.object({
   latencyDownMs: z.coerce.number().int().min(1).default(1000),
   sslWarningDays: z.coerce.number().int().min(0).default(30),
   sslDownDays: z.coerce.number().int().min(0).default(7),
-  httpCycles: z.coerce.number().int().min(1).default(3)
+  httpCycles: z.coerce.number().int().min(1).default(3),
+  webhookUrl: z.union([z.string().url(), z.literal("")]).optional().transform((value) => value || undefined)
 });
 export type AlertSettingsInput = z.infer<typeof alertSettingsSchema>;
 

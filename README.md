@@ -12,8 +12,10 @@ NetworkUptime is a Docker-based network monitoring foundation with a server and 
 - IP allow/block mode schema and enforcement for agent endpoints.
 - Basic dashboard at `https://localhost:8443`.
 - Agent-driven `up/down` monitor checks with result history.
+- Consecutive-cycle alert state evaluation with parent monitor suppression.
+- Optional webhook notification for alert state changes.
 
-Alert delivery, SSL checks, and HTTP content matching are intentionally left for later implementation passes.
+SSL checks, and HTTP content matching are intentionally left for later implementation passes.
 
 ## Local Docker Start
 
@@ -58,6 +60,7 @@ Important server variables:
 - `ADMIN_USERNAME`: defaults to `admin`.
 - `ADMIN_PASSWORD`: defaults to `admin` when unset.
 - `TLS_CERT_FILE` and `TLS_KEY_FILE`: enable HTTPS listener.
+- `ALERT_WEBHOOK_URL`: optional webhook target for alert notifications.
 
 Important agent variables:
 
@@ -73,6 +76,8 @@ Important agent variables:
 - `POST /api/auth/login`
 - `GET /api/settings/server`
 - `PUT /api/settings/server`
+- `GET /api/settings/alerts`
+- `PUT /api/settings/alerts`
 - `POST /api/agents/register`
 - `POST /api/agents/:id/check-in`
 - `GET /api/agents/:id/monitors`
@@ -82,5 +87,6 @@ Important agent variables:
 - `POST /api/monitors`
 - `PUT /api/monitors/:id`
 - `DELETE /api/monitors/:id`
+- `GET /api/alerts/events`
 
 Protected server routes require a logged-in admin token. Agent routes require `Authorization: Bearer <SERVER_AGENT_KEY>`.

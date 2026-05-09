@@ -88,6 +88,7 @@ export const renderAppShell = (): string => `<!doctype html>
       .up { background: #14532d; color: #bbf7d0; }
       .down { background: #7f1d1d; color: #fecaca; }
       .warning { background: #713f12; color: #fde68a; }
+      .suppressed { background: #312e81; color: #c4b5fd; }
       .unknown { background: #334155; color: #cbd5e1; }
 
       table {
@@ -163,6 +164,8 @@ export const renderAppShell = (): string => `<!doctype html>
                   <option value="up_down">Up / Down</option>
                 </select>
               </label>
+              <label>Warning cycles override <input name="upDownWarningCycles" type="number" min="1" placeholder="Use global" /></label>
+              <label>Down cycles override <input name="upDownDownCycles" type="number" min="1" placeholder="Use global" /></label>
               <button>Create monitor</button>
             </form>
             <p id="monitorError" class="muted"></p>
@@ -175,14 +178,46 @@ export const renderAppShell = (): string => `<!doctype html>
         </div>
 
         <section class="card" style="margin-top: 1rem;">
+          <h2>Alert Settings</h2>
+          <form id="alertSettingsForm">
+            <div class="grid">
+              <label>Alert level
+                <select name="alertLevel">
+                  <option value="warning">Warning</option>
+                  <option value="down">Down</option>
+                </select>
+              </label>
+              <label>Repeat
+                <select name="repeat">
+                  <option value="none">None</option>
+                  <option value="always">Always</option>
+                  <option value="status_change_only">Status change only</option>
+                </select>
+              </label>
+              <label>Check delay seconds <input name="delaySeconds" type="number" min="5" /></label>
+              <label>Up/down warning cycles <input name="upDownWarningCycles" type="number" min="1" /></label>
+              <label>Up/down down cycles <input name="upDownDownCycles" type="number" min="1" /></label>
+              <label>Webhook URL <input name="webhookUrl" placeholder="https://example.com/webhook" /></label>
+            </div>
+            <button>Save alert settings</button>
+          </form>
+          <p id="alertSettingsMessage" class="muted"></p>
+        </section>
+
+        <section class="card" style="margin-top: 1rem;">
           <h2>Monitors</h2>
           <div id="monitors"></div>
+        </section>
+
+        <section class="card" style="margin-top: 1rem;">
+          <h2>Alert Events</h2>
+          <div id="alertEvents"></div>
         </section>
       </section>
     </main>
 
     <script>
-      const state = { agents: [], monitors: [] };
+      const state = { agents: [], monitors: [], alertSettings: null, alertEvents: [] };
 
       const api = async (path, options = {}) => {
         const response = await fetch(path, {
@@ -201,13 +236,17 @@ export const renderAppShell = (): string => `<!doctype html>
       const statusPill = (status) => '<span class="pill ' + String(status).toLowerCase() + '">' + status + '</span>';
 
       const loadDashboard = async () => {
-        const [agents, monitors] = await Promise.all([
+        const [agents, monitors, alertSettings, alertEvents] = await Promise.all([
           api("/api/agents"),
-          api("/api/monitors")
+          api("/api/monitors"),
+          api("/api/settings/alerts"),
+          api("/api/alerts/events")
         ]);
 
         state.agents = agents.agents;
         state.monitors = monitors.monitors;
+        state.alertSettings = alertSettings;
+        state.alertEvents = alertEvents.events;
         document.getElementById("loginCard").classList.add("hidden");
         document.getElementById("dashboard").classList.remove("hidden");
         render();
@@ -231,6 +270,13 @@ export const renderAppShell = (): string => `<!doctype html>
           '<option value="">None</option>' +
           state.monitors.map((monitor) => '<option value="' + monitor.id + '">' + monitor.friendlyName + '</option>').join("");
 
+        if (state.alertSettings) {
+          const form = document.getElementById("alertSettingsForm");
+          for (const [key, value] of Object.entries(state.alertSettings)) {
+            if (form.elements[key]) form.elements[key].value = value ?? "";
+          }
+        }
+
         document.getElementById("agents").innerHTML = state.agents.length
           ? '<table><thead><tr><th>Name</th><th>Status</th><th>Last Check-In</th></tr></thead><tbody>' +
             state.agents.map((agent) =>
@@ -243,10 +289,19 @@ export const renderAppShell = (): string => `<!doctype html>
           ? '<table><thead><tr><th>Name</th><th>Status</th><th>Target</th><th>Latest Check</th><th></th></tr></thead><tbody>' +
             state.monitors.map((monitor) => {
               const latest = monitor.checks[0];
-              return '<tr><td><strong>' + monitor.friendlyName + '</strong><br><span class="muted">' + (monitor.description || "") + '</span></td><td>' + statusPill(monitor.status) + '</td><td>' + monitor.target + '</td><td>' + (latest ? latest.message + '<br><span class="muted">' + latest.checkedAt + '</span>' : 'No checks yet') + '</td><td><button class="secondary" data-delete="' + monitor.id + '">Delete</button></td></tr>';
+              const parent = monitor.parentMonitor ? '<br><span class="muted">Parent: ' + monitor.parentMonitor.friendlyName + '</span>' : '';
+              return '<tr><td><strong>' + monitor.friendlyName + '</strong><br><span class="muted">' + (monitor.description || "") + '</span>' + parent + '</td><td>' + statusPill(monitor.status) + '</td><td>' + monitor.target + '</td><td>' + (latest ? latest.message + '<br><span class="muted">' + latest.checkedAt + '</span>' : 'No checks yet') + '</td><td><button class="secondary" data-delete="' + monitor.id + '">Delete</button></td></tr>';
             }).join("") +
             '</tbody></table>'
           : '<p class="muted">No monitors yet. Create one to start checks from an agent.</p>';
+
+        document.getElementById("alertEvents").innerHTML = state.alertEvents.length
+          ? '<table><thead><tr><th>Monitor</th><th>Transition</th><th>Notification</th><th>Time</th></tr></thead><tbody>' +
+            state.alertEvents.map((event) =>
+              '<tr><td>' + event.monitor.friendlyName + '</td><td>' + statusPill(event.previousStatus) + ' -> ' + statusPill(event.newStatus) + (event.suppressedByMonitorId ? '<br><span class="muted">Suppressed by parent</span>' : '') + '</td><td>' + (event.notified ? 'Sent' : (event.notificationError || 'Not sent')) + '</td><td>' + event.createdAt + '</td></tr>'
+            ).join("") +
+            '</tbody></table>'
+          : '<p class="muted">No alert events yet.</p>';
       };
 
       document.getElementById("loginForm").addEventListener("submit", async (event) => {
@@ -266,15 +321,37 @@ export const renderAppShell = (): string => `<!doctype html>
       document.getElementById("monitorForm").addEventListener("submit", async (event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
+        const payload = Object.fromEntries(form);
+        const overrideSettings = {};
+        if (payload.upDownWarningCycles) overrideSettings.upDownWarningCycles = Number(payload.upDownWarningCycles);
+        if (payload.upDownDownCycles) overrideSettings.upDownDownCycles = Number(payload.upDownDownCycles);
+        delete payload.upDownWarningCycles;
+        delete payload.upDownDownCycles;
+        if (Object.keys(overrideSettings).length > 0) payload.overrideSettings = overrideSettings;
         try {
           await api("/api/monitors", {
             method: "POST",
-            body: JSON.stringify(Object.fromEntries(form))
+            body: JSON.stringify(payload)
           });
           event.currentTarget.reset();
           await loadDashboard();
         } catch (error) {
           document.getElementById("monitorError").textContent = "Create failed: " + error.message;
+        }
+      });
+
+      document.getElementById("alertSettingsForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const payload = Object.fromEntries(new FormData(event.currentTarget));
+        try {
+          await api("/api/settings/alerts", {
+            method: "PUT",
+            body: JSON.stringify(payload)
+          });
+          document.getElementById("alertSettingsMessage").textContent = "Alert settings saved.";
+          await loadDashboard();
+        } catch (error) {
+          document.getElementById("alertSettingsMessage").textContent = "Save failed: " + error.message;
         }
       });
 

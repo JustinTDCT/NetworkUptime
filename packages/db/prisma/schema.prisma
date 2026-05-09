@@ -85,6 +85,7 @@ model AlertSettings {
   sslWarningDays      Int         @default(30)
   sslDownDays         Int         @default(7)
   httpCycles          Int         @default(3)
+  webhookUrl          String?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 }
@@ -118,6 +119,7 @@ model Monitor {
   dependencies     MonitorDependency[] @relation("MonitorDependencyParent")
   dependents       MonitorDependency[] @relation("MonitorDependencyChild")
   checks           MonitorCheck[]
+  alertEvents      AlertEvent[]
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 }
@@ -149,4 +151,19 @@ model MonitorCheck {
   checkedAt      DateTime      @default(now())
 
   @@index([monitorId, checkedAt])
+}
+
+model AlertEvent {
+  id            String        @id @default(uuid())
+  monitorId     String
+  monitor       Monitor       @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  previousStatus MonitorStatus
+  newStatus     MonitorStatus
+  message       String?
+  suppressedByMonitorId String?
+  notified      Boolean       @default(false)
+  notificationError String?
+  createdAt     DateTime      @default(now())
+
+  @@index([monitorId, createdAt])
 }
