@@ -130,6 +130,21 @@ const parseJsonList = (value: string): string[] => {
   }
 };
 
+const parseJsonRecord = (value: string | null | undefined): Record<string, unknown> | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const mergeMonitorAlertSettings = (
   globalSettings: EffectiveAlertSettings,
   overrideSettings: string | null
@@ -216,6 +231,51 @@ const calculateSslStatus = async (
   return MonitorStatus.UP;
 };
 
+const calculateHttpStatus = async (
+  monitorId: string,
+  settings: EffectiveAlertSettings
+): Promise<MonitorStatus> => {
+  const monitor = await prisma.monitor.findUniqueOrThrow({ where: { id: monitorId } });
+  const expected = parseJsonRecord(monitor.expectedResponse);
+  if (!expected) {
+    return MonitorStatus.UNKNOWN;
+  }
+
+  const checks = await prisma.monitorCheck.findMany({
+    where: { monitorId },
+    orderBy: { checkedAt: "desc" },
+    take: settings.httpCycles
+  });
+
+  if (checks[0]?.httpMatched) {
+    return MonitorStatus.UP;
+  }
+
+  const consecutiveMismatches = checks.findIndex((check) => check.httpMatched);
+  const mismatchCount = consecutiveMismatches === -1 ? checks.length : consecutiveMismatches;
+
+  if (mismatchCount >= settings.httpCycles) {
+    return MonitorStatus.DOWN;
+  }
+
+  return checks.length > 0 ? MonitorStatus.WARNING : MonitorStatus.UNKNOWN;
+};
+
+const httpSignaturesMatch = (
+  expected: Record<string, unknown>,
+  actual: Record<string, unknown> | undefined
+): boolean => {
+  if (!actual) {
+    return false;
+  }
+
+  return (
+    expected.statusCode === actual.statusCode &&
+    expected.title === actual.title &&
+    expected.bodyHash === actual.bodyHash
+  );
+};
+
 const sendWebhookNotification = async (
   webhookUrl: string | undefined,
   payload: Record<string, unknown>
@@ -260,6 +320,10 @@ const evaluateMonitorState = async (
 
     if (monitor.type === MonitorType.SSL) {
       return calculateSslStatus(monitor.id, settings);
+    }
+
+    if (monitor.type === MonitorType.HTTP_HTTPS) {
+      return calculateHttpStatus(monitor.id, settings);
     }
 
     return monitor.status;
@@ -560,7 +624,7 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
       where: {
         parentAgentId: params.id,
         type: {
-          in: [MonitorType.UP_DOWN, MonitorType.SSL]
+          in: [MonitorType.UP_DOWN, MonitorType.SSL, MonitorType.HTTP_HTTPS]
         }
       },
       orderBy: { friendlyName: "asc" }
@@ -571,7 +635,12 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
         id: monitor.id,
         friendlyName: monitor.friendlyName,
         target: monitor.target,
-        type: monitor.type === MonitorType.SSL ? "ssl" : "up_down"
+        type:
+          monitor.type === MonitorType.SSL
+            ? "ssl"
+            : monitor.type === MonitorType.HTTP_HTTPS
+              ? "http_https"
+              : "up_down"
       }))
     };
   });
@@ -591,6 +660,12 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
     }
 
     const status = monitorStatusToDb(input.status);
+    const rawDetails = input.rawDetails;
+    const expectedResponse = parseJsonRecord(monitor.expectedResponse);
+    const httpMatched =
+      monitor.type === MonitorType.HTTP_HTTPS
+        ? httpSignaturesMatch(expectedResponse ?? {}, rawDetails)
+        : input.httpMatched;
     const check = await prisma.monitorCheck.create({
       data: {
         monitorId: input.monitorId,
@@ -599,10 +674,19 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
         sslValid: input.sslValid,
         sslExpiresAt: input.sslExpiresAt ? new Date(input.sslExpiresAt) : undefined,
         sslSelfSigned: input.sslSelfSigned,
+        httpMatched,
+        httpStatusCode: input.httpStatusCode,
         message: input.message,
-        rawDetails: input.rawDetails ? JSON.stringify(input.rawDetails) : undefined
+        rawDetails: rawDetails ? JSON.stringify(rawDetails) : undefined
       }
     });
+
+    if (monitor.type === MonitorType.HTTP_HTTPS && rawDetails && !expectedResponse) {
+      await prisma.monitor.update({
+        where: { id: monitor.id },
+        data: { proposedResponse: JSON.stringify(rawDetails) }
+      });
+    }
 
     const effectiveStatus = await evaluateMonitorState(input.monitorId, input.message);
 
@@ -648,6 +732,25 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
         orderBy: { friendlyName: "asc" }
       })
     };
+  });
+
+  app.post("/api/monitors/:id/approve-http-signature", { preHandler: requireUser }, async (request) => {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const monitor = await prisma.monitor.findUniqueOrThrow({ where: { id: params.id } });
+    if (!monitor.proposedResponse) {
+      throw new Error("No proposed HTTP signature is available.");
+    }
+
+    const updatedMonitor = await prisma.monitor.update({
+      where: { id: params.id },
+      data: {
+        expectedResponse: monitor.proposedResponse,
+        proposedResponse: null,
+        status: MonitorStatus.UNKNOWN
+      }
+    });
+
+    return { monitor: updatedMonitor };
   });
 
   app.post("/api/monitors", { preHandler: requireUser }, async (request, reply) => {

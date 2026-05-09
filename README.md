@@ -14,8 +14,9 @@ NetworkUptime is a Docker-based network monitoring foundation with a server and 
 - Agent-driven `up/down` monitor checks with result history.
 - Consecutive-cycle alert state evaluation with parent monitor suppression.
 - Optional webhook notification for alert state changes.
+- HTTP/HTTPS content monitors with scan-and-approve response signatures.
 
-SSL checks, and HTTP content matching are intentionally left for later implementation passes.
+Additional notification providers and richer HTTP matching rules are intentionally left for later implementation passes.
 
 ## Local Docker Start
 
@@ -87,6 +88,7 @@ Important agent variables:
 - `POST /api/monitors`
 - `PUT /api/monitors/:id`
 - `DELETE /api/monitors/:id`
+- `POST /api/monitors/:id/approve-http-signature`
 - `GET /api/alerts/events`
 
 Protected server routes require a logged-in admin token. Agent routes require `Authorization: Bearer <SERVER_AGENT_KEY>`.

@@ -163,6 +163,7 @@ export const renderAppShell = (): string => `<!doctype html>
                 <select name="type">
                   <option value="up_down">Up / Down</option>
                   <option value="ssl">SSL Certificate</option>
+                  <option value="http_https">HTTP/HTTPS Content</option>
                 </select>
               </label>
               <label>Warning cycles override <input name="upDownWarningCycles" type="number" min="1" placeholder="Use global" /></label>
@@ -294,7 +295,13 @@ export const renderAppShell = (): string => `<!doctype html>
               const sslDetails = latest && latest.sslExpiresAt
                 ? '<br><span class="muted">SSL expires: ' + latest.sslExpiresAt + (latest.sslSelfSigned ? ' · self-signed' : '') + '</span>'
                 : '';
-              return '<tr><td><strong>' + monitor.friendlyName + '</strong><br><span class="muted">' + (monitor.description || "") + '</span>' + parent + '</td><td>' + statusPill(monitor.status) + '</td><td>' + monitor.target + '<br><span class="muted">' + monitor.type + '</span></td><td>' + (latest ? latest.message + sslDetails + '<br><span class="muted">' + latest.checkedAt + '</span>' : 'No checks yet') + '</td><td><button class="secondary" data-delete="' + monitor.id + '">Delete</button></td></tr>';
+              const httpDetails = latest && latest.httpStatusCode
+                ? '<br><span class="muted">HTTP ' + latest.httpStatusCode + ' · ' + (latest.httpMatched === null || latest.httpMatched === undefined ? 'pending approval' : (latest.httpMatched ? 'matched' : 'mismatch')) + '</span>'
+                : '';
+              const proposed = monitor.proposedResponse && !monitor.expectedResponse
+                ? '<br><button data-approve-http="' + monitor.id + '">Approve scanned content</button>'
+                : '';
+              return '<tr><td><strong>' + monitor.friendlyName + '</strong><br><span class="muted">' + (monitor.description || "") + '</span>' + parent + proposed + '</td><td>' + statusPill(monitor.status) + '</td><td>' + monitor.target + '<br><span class="muted">' + monitor.type + '</span></td><td>' + (latest ? latest.message + sslDetails + httpDetails + '<br><span class="muted">' + latest.checkedAt + '</span>' : 'No checks yet') + '</td><td><button class="secondary" data-delete="' + monitor.id + '">Delete</button></td></tr>';
             }).join("") +
             '</tbody></table>'
           : '<p class="muted">No monitors yet. Create one to start checks from an agent.</p>';
@@ -360,6 +367,13 @@ export const renderAppShell = (): string => `<!doctype html>
       });
 
       document.getElementById("monitors").addEventListener("click", async (event) => {
+        const approveId = event.target.dataset.approveHttp;
+        if (approveId) {
+          await api("/api/monitors/" + approveId + "/approve-http-signature", { method: "POST" });
+          await loadDashboard();
+          return;
+        }
+
         const id = event.target.dataset.delete;
         if (!id || !confirm("Delete this monitor?")) return;
         await api("/api/monitors/" + id, { method: "DELETE" });

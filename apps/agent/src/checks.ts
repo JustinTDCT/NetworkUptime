@@ -1,9 +1,17 @@
+import { createHash } from "node:crypto";
 import net from "node:net";
 import { performance } from "node:perf_hooks";
 import tls from "node:tls";
 import { type AssignedMonitor, type MonitorCheckResult } from "./client.js";
 
 const timeoutMs = 5000;
+
+const bodyHash = (body: string): string => createHash("sha256").update(body).digest("hex");
+
+const titleFromHtml = (body: string): string => {
+  const match = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return match?.[1]?.replace(/\s+/g, " ").trim() ?? "";
+};
 
 const parseHostTarget = (target: string): { host: string; port: number } => {
   const [host, port] = target.split(":");
@@ -177,6 +185,48 @@ export const runSslCheck = async (monitor: AssignedMonitor): Promise<MonitorChec
       sslValid: false,
       message: error instanceof Error ? error.message : "SSL check failed",
       rawDetails: { target: monitor.target, timeoutMs }
+    };
+  }
+};
+
+export const runHttpContentCheck = async (monitor: AssignedMonitor): Promise<MonitorCheckResult> => {
+  const started = performance.now();
+
+  try {
+    const response = await fetch(monitor.target, {
+      method: "GET",
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    const body = await response.text();
+    const latencyMs = Math.round(performance.now() - started);
+    const title = titleFromHtml(body);
+    const signature = {
+      mode: "http_content",
+      target: monitor.target,
+      finalUrl: response.url,
+      statusCode: response.status,
+      title,
+      bodyHash: bodyHash(body),
+      contentSample: body.replace(/\s+/g, " ").trim().slice(0, 500)
+    };
+
+    return {
+      monitorId: monitor.id,
+      status: response.status >= 500 ? "down" : "up",
+      latencyMs,
+      httpStatusCode: response.status,
+      message: `Scanned HTTP ${response.status}${title ? ` (${title})` : ""}`,
+      rawDetails: signature
+    };
+  } catch (error) {
+    const latencyMs = Math.round(performance.now() - started);
+    return {
+      monitorId: monitor.id,
+      status: "down",
+      latencyMs,
+      httpMatched: false,
+      message: error instanceof Error ? error.message : "HTTP content check failed",
+      rawDetails: { mode: "http_content", target: monitor.target, timeoutMs }
     };
   }
 };

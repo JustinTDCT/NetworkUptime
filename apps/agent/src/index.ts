@@ -4,7 +4,7 @@ import {
   registerAgent,
   submitMonitorCheck
 } from "./client.js";
-import { runSslCheck, runUpDownCheck } from "./checks.js";
+import { runHttpContentCheck, runSslCheck, runUpDownCheck } from "./checks.js";
 import { loadAgentConfig } from "./config.js";
 
 const sleep = (milliseconds: number): Promise<void> =>
@@ -40,7 +40,12 @@ const main = async (): Promise<void> => {
 
       const monitors = await fetchAssignedMonitors(config);
       for (const monitor of monitors) {
-        const result = monitor.type === "ssl" ? await runSslCheck(monitor) : await runUpDownCheck(monitor);
+        const result =
+          monitor.type === "ssl"
+            ? await runSslCheck(monitor)
+            : monitor.type === "http_https"
+              ? await runHttpContentCheck(monitor)
+              : await runUpDownCheck(monitor);
         await submitMonitorCheck(config, result);
         console.log(
           `Monitor ${monitor.friendlyName} is ${result.status} (${result.message ?? "no details"})`

@@ -132,6 +132,8 @@ export const monitorCheckResultSchema = z.object({
   sslValid: z.boolean().optional(),
   sslExpiresAt: z.string().datetime().optional(),
   sslSelfSigned: z.boolean().optional(),
+  httpMatched: z.boolean().optional(),
+  httpStatusCode: z.coerce.number().int().min(100).max(599).optional(),
   message: z.string().max(1000).optional(),
   rawDetails: z.record(z.string(), z.unknown()).optional()
 });

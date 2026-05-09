@@ -111,6 +111,8 @@ model Monitor {
   type             MonitorType
   status           MonitorStatus  @default(UNKNOWN)
   overrideSettings String?
+  expectedResponse String?
+  proposedResponse String?
   parentAgentId    String
   parentAgent      Agent          @relation(fields: [parentAgentId], references: [id])
   parentMonitorId  String?

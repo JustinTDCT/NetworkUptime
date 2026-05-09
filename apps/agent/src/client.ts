@@ -4,7 +4,7 @@ export type AssignedMonitor = {
   id: string;
   friendlyName: string;
   target: string;
-  type: "up_down" | "ssl";
+  type: "up_down" | "ssl" | "http_https";
 };
 
 export type MonitorCheckResult = {
@@ -14,6 +14,8 @@ export type MonitorCheckResult = {
   sslValid?: boolean;
   sslExpiresAt?: string;
   sslSelfSigned?: boolean;
+  httpMatched?: boolean;
+  httpStatusCode?: number;
   message?: string;
   rawDetails?: Record<string, unknown>;
 };
