@@ -6,6 +6,8 @@
   "scripts": {
     "dev:server": "pnpm --filter @networkuptime/server dev",
     "dev:agent": "pnpm --filter @networkuptime/agent dev",
+    "dev:web": "pnpm --filter @networkuptime/web dev",
+    "build:web": "pnpm --filter @networkuptime/web build",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",

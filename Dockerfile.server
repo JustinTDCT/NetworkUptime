@@ -23,6 +23,7 @@ COPY scripts ./scripts
 
 RUN pnpm install --frozen-lockfile=false
 RUN pnpm --filter @networkuptime/db prisma:generate
+RUN pnpm --filter @networkuptime/web build
 
 EXPOSE 8443
 

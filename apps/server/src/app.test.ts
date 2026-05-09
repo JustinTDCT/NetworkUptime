@@ -111,6 +111,26 @@ describe("server API", () => {
 
     expect(authenticated.statusCode).toBe(200);
     expect(authenticated.json()).toEqual({ agents: [] });
+
+    const session = await app.inject({
+      method: "GET",
+      url: "/api/auth/me",
+      headers: { authorization: `Bearer ${token}` }
+    });
+
+    expect(session.statusCode).toBe(200);
+    expect(session.json<{ user: { username: string; role: string } }>().user).toMatchObject({
+      username: "admin",
+      role: "ADMIN"
+    });
+
+    const logout = await app.inject({
+      method: "POST",
+      url: "/api/auth/logout"
+    });
+
+    expect(logout.statusCode).toBe(200);
+    expect(logout.headers["set-cookie"]).toContain("networkuptime_session=;");
   });
 
   it("registers an agent and assigns created monitors", async () => {

@@ -1,5 +1,6 @@
 import cookie from "@fastify/cookie";
 import jwt from "@fastify/jwt";
+import staticPlugin from "@fastify/static";
 import { AlertLevel, AlertRepeat, MonitorStatus, MonitorType, prisma } from "@networkuptime/db";
 import {
   agentCheckInSchema,
@@ -12,6 +13,9 @@ import {
   serverSettingsSchema
 } from "@networkuptime/shared";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { type ServerRuntimeConfig } from "./config.js";
 import { hashSecret, verifySecret } from "./security.js";
@@ -129,6 +133,9 @@ const parseJsonList = (value: string): string[] => {
     return [];
   }
 };
+
+const webDistDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist");
+const webIndexPath = path.join(webDistDirectory, "index.html");
 
 const parseJsonRecord = (value: string | null | undefined): Record<string, unknown> | undefined => {
   if (!value) {
@@ -503,6 +510,13 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
     }
   });
 
+  if (existsSync(webIndexPath)) {
+    await app.register(staticPlugin, {
+      root: path.join(webDistDirectory, "assets"),
+      prefix: "/assets/"
+    });
+  }
+
   app.addHook("preHandler", enforceIpRules);
 
   app.get("/health", async () => ({
@@ -511,6 +525,10 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
   }));
 
   app.get("/", async (_request, reply) => {
+    if (existsSync(webIndexPath)) {
+      return reply.type("text/html").send(readFileSync(webIndexPath, "utf8"));
+    }
+
     return reply.type("text/html").send(renderAppShell());
   });
 
@@ -531,6 +549,18 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
     });
 
     return { token, user: { id: user.id, username: user.username, role: user.role } };
+  });
+
+  app.get("/api/auth/me", { preHandler: requireUser }, async (request) => {
+    return { user: request.user };
+  });
+
+  app.post("/api/auth/logout", async (_request, reply) => {
+    reply.clearCookie("networkuptime_session", {
+      path: "/"
+    });
+
+    return { ok: true };
   });
 
   app.get("/api/settings/server", { preHandler: requireUser }, async () => {

@@ -13,6 +13,7 @@
   "dependencies": {
     "@fastify/cookie": "latest",
     "@fastify/jwt": "latest",
+    "@fastify/static": "latest",
     "@networkuptime/db": "workspace:*",
     "@networkuptime/shared": "workspace:*",
     "bcryptjs": "latest",

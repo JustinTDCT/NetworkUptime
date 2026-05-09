@@ -10,7 +10,7 @@ NetworkUptime is a Docker-based network monitoring foundation with a server and 
 - Default admin bootstrap with username `admin` and a password from `ADMIN_PASSWORD` or `ADMIN_PASSWORD_FILE`.
 - Agent key authentication using a UUID shared secret stored hashed on the server.
 - IP allow/block mode schema and enforcement for agent endpoints.
-- Basic dashboard at `https://localhost:8443`.
+- React dashboard at `https://localhost:8443`.
 - Agent-driven `up/down` monitor checks with result history.
 - Consecutive-cycle alert state evaluation with parent monitor suppression.
 - Optional webhook notification for alert state changes.
@@ -31,6 +31,12 @@ To run a local agent beside the server:
 
 ```sh
 docker compose --profile agent up --build
+```
+
+To work on the dashboard separately, run the Vite dev server:
+
+```sh
+pnpm dev:web
 ```
 
 The Docker server image generates a development self-signed certificate. The agent profile sets `NODE_TLS_REJECT_UNAUTHORIZED=0` so local check-ins work against that certificate. Use a real certificate and remove that setting for production.
