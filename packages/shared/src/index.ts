@@ -114,12 +114,24 @@ export const monitorSchema = z.object({
   friendlyName: z.string().min(1).max(160),
   description: z.string().max(1000).default(""),
   parentAgentId: uuidSchema,
-  parentMonitorId: uuidSchema.optional(),
+  parentMonitorId: z
+    .union([uuidSchema, z.literal("")])
+    .optional()
+    .transform((value) => (value === "" ? undefined : value)),
   target: z.string().min(1).max(2048),
   type: monitorTypeSchema,
   overrideSettings: alertSettingsSchema.partial().optional()
 });
 export type MonitorInput = z.infer<typeof monitorSchema>;
+
+export const monitorCheckResultSchema = z.object({
+  monitorId: uuidSchema,
+  status: z.enum(["up", "warning", "down"]),
+  latencyMs: z.coerce.number().int().min(0).optional(),
+  message: z.string().max(1000).optional(),
+  rawDetails: z.record(z.string(), z.unknown()).optional()
+});
+export type MonitorCheckResultInput = z.infer<typeof monitorCheckResultSchema>;
 
 export const bearerToken = (authorization: string | undefined): string | undefined => {
   if (!authorization?.startsWith("Bearer ")) {

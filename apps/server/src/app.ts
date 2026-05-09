@@ -1,10 +1,12 @@
 import cookie from "@fastify/cookie";
 import jwt from "@fastify/jwt";
-import { AlertLevel, AlertRepeat, prisma } from "@networkuptime/db";
+import { AlertLevel, AlertRepeat, MonitorStatus, MonitorType, prisma } from "@networkuptime/db";
 import {
   agentCheckInSchema,
   bearerToken,
   loginSchema,
+  monitorCheckResultSchema,
+  monitorSchema,
   registerAgentSchema,
   serverSettingsSchema
 } from "@networkuptime/shared";
@@ -12,12 +14,37 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { z } from "zod";
 import { type ServerRuntimeConfig } from "./config.js";
 import { hashSecret, verifySecret } from "./security.js";
+import { renderAppShell } from "./ui.js";
 
 const ipModeToDb = (mode: "allow_all_blocklist" | "allow_none_whitelist") =>
   mode === "allow_all_blocklist" ? "ALLOW_ALL_BLOCKLIST" : "ALLOW_NONE_WHITELIST";
 
 const ipModeFromDb = (mode: string) =>
   mode === "ALLOW_NONE_WHITELIST" ? "allow_none_whitelist" : "allow_all_blocklist";
+
+const monitorTypeToDb = (type: "ssl" | "up_down" | "http_https") => {
+  if (type === "ssl") {
+    return MonitorType.SSL;
+  }
+
+  if (type === "http_https") {
+    return MonitorType.HTTP_HTTPS;
+  }
+
+  return MonitorType.UP_DOWN;
+};
+
+const monitorStatusToDb = (status: "up" | "warning" | "down") => {
+  if (status === "up") {
+    return MonitorStatus.UP;
+  }
+
+  if (status === "warning") {
+    return MonitorStatus.WARNING;
+  }
+
+  return MonitorStatus.DOWN;
+};
 
 const alertLevelToDb = (level: "warning" | "down") =>
   level === "warning" ? AlertLevel.WARNING : AlertLevel.DOWN;
@@ -177,6 +204,10 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
     service: "networkuptime-server"
   }));
 
+  app.get("/", async (_request, reply) => {
+    return reply.type("text/html").send(renderAppShell());
+  });
+
   app.post("/api/auth/login", async (request, reply) => {
     const input = loginSchema.parse(request.body);
     const user = await prisma.user.findUnique({ where: { username: input.username } });
@@ -279,6 +310,117 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
     return {
       agents: await prisma.agent.findMany({ orderBy: { name: "asc" } })
     };
+  });
+
+  app.get("/api/agents/:id/monitors", { preHandler: requireAgentKey }, async (request) => {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const monitors = await prisma.monitor.findMany({
+      where: {
+        parentAgentId: params.id,
+        type: MonitorType.UP_DOWN
+      },
+      orderBy: { friendlyName: "asc" }
+    });
+
+    return {
+      monitors: monitors.map((monitor) => ({
+        id: monitor.id,
+        friendlyName: monitor.friendlyName,
+        target: monitor.target,
+        type: "up_down"
+      }))
+    };
+  });
+
+  app.post("/api/agents/:id/checks", { preHandler: requireAgentKey }, async (request, reply) => {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const input = monitorCheckResultSchema.parse(request.body);
+    const monitor = await prisma.monitor.findFirst({
+      where: {
+        id: input.monitorId,
+        parentAgentId: params.id
+      }
+    });
+
+    if (!monitor) {
+      return reply.code(404).send({ error: "Monitor not found for this agent." });
+    }
+
+    const status = monitorStatusToDb(input.status);
+    const check = await prisma.monitorCheck.create({
+      data: {
+        monitorId: input.monitorId,
+        status,
+        latencyMs: input.latencyMs,
+        message: input.message,
+        rawDetails: input.rawDetails ? JSON.stringify(input.rawDetails) : undefined
+      }
+    });
+
+    await prisma.monitor.update({
+      where: { id: input.monitorId },
+      data: { status }
+    });
+
+    return reply.code(201).send({ check });
+  });
+
+  app.get("/api/monitors", { preHandler: requireUser }, async () => {
+    return {
+      monitors: await prisma.monitor.findMany({
+        include: {
+          parentAgent: true,
+          parentMonitor: true,
+          checks: {
+            orderBy: { checkedAt: "desc" },
+            take: 5
+          }
+        },
+        orderBy: { friendlyName: "asc" }
+      })
+    };
+  });
+
+  app.post("/api/monitors", { preHandler: requireUser }, async (request, reply) => {
+    const input = monitorSchema.parse(request.body);
+    const monitor = await prisma.monitor.create({
+      data: {
+        friendlyName: input.friendlyName,
+        description: input.description,
+        parentAgentId: input.parentAgentId,
+        parentMonitorId: input.parentMonitorId,
+        target: input.target,
+        type: monitorTypeToDb(input.type),
+        overrideSettings: input.overrideSettings ? JSON.stringify(input.overrideSettings) : undefined
+      }
+    });
+
+    return reply.code(201).send({ monitor });
+  });
+
+  app.put("/api/monitors/:id", { preHandler: requireUser }, async (request) => {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const input = monitorSchema.parse(request.body);
+    const monitor = await prisma.monitor.update({
+      where: { id: params.id },
+      data: {
+        friendlyName: input.friendlyName,
+        description: input.description,
+        parentAgentId: input.parentAgentId,
+        parentMonitorId: input.parentMonitorId,
+        target: input.target,
+        type: monitorTypeToDb(input.type),
+        overrideSettings: input.overrideSettings ? JSON.stringify(input.overrideSettings) : undefined
+      }
+    });
+
+    return { monitor };
+  });
+
+  app.delete("/api/monitors/:id", { preHandler: requireUser }, async (request, reply) => {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    await prisma.monitor.delete({ where: { id: params.id } });
+    return reply.code(204).send();
   });
 
   return app;

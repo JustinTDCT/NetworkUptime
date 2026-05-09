@@ -1,4 +1,10 @@
-import { checkInAgent, registerAgent } from "./client.js";
+import {
+  checkInAgent,
+  fetchAssignedMonitors,
+  registerAgent,
+  submitMonitorCheck
+} from "./client.js";
+import { runUpDownCheck } from "./checks.js";
 import { loadAgentConfig } from "./config.js";
 
 const sleep = (milliseconds: number): Promise<void> =>
@@ -31,6 +37,15 @@ const main = async (): Promise<void> => {
     try {
       await checkInAgent(config);
       console.log(`Check-in completed at ${new Date().toISOString()}`);
+
+      const monitors = await fetchAssignedMonitors(config);
+      for (const monitor of monitors) {
+        const result = await runUpDownCheck(monitor);
+        await submitMonitorCheck(config, result);
+        console.log(
+          `Monitor ${monitor.friendlyName} is ${result.status} (${result.message ?? "no details"})`
+        );
+      }
     } catch (error) {
       console.error("Check-in failed:", error);
     }

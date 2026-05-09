@@ -1,6 +1,6 @@
 # NetworkUptime
 
-NetworkUptime is a Docker-based network monitoring foundation with a server and headless agents. This first pass includes the deployment shape, configuration contracts, database schema, authentication primitives, and agent registration/check-in flow.
+NetworkUptime is a Docker-based network monitoring foundation with a server and headless agents. This first pass includes the deployment shape, configuration contracts, database schema, authentication primitives, a basic web UI, monitor management, and agent registration/check-in flow.
 
 ## Current Scope
 
@@ -10,8 +10,10 @@ NetworkUptime is a Docker-based network monitoring foundation with a server and 
 - Default admin bootstrap with username `admin` and password from `ADMIN_PASSWORD`, falling back to `admin`.
 - Agent key authentication using a UUID shared secret stored hashed on the server.
 - IP allow/block mode schema and enforcement for agent endpoints.
+- Basic dashboard at `https://localhost:8443`.
+- Agent-driven `up/down` monitor checks with result history.
 
-Monitor execution, alert delivery, and the web UI are intentionally left for the next implementation pass.
+Alert delivery, SSL checks, and HTTP content matching are intentionally left for later implementation passes.
 
 ## Local Docker Start
 
@@ -29,6 +31,14 @@ docker compose --profile agent up --build
 ```
 
 The Docker server image generates a development self-signed certificate. The agent profile sets `NODE_TLS_REJECT_UNAUTHORIZED=0` so local check-ins work against that certificate. Use a real certificate and remove that setting for production.
+
+Open the UI at:
+
+```text
+https://localhost:8443
+```
+
+The local development certificate is self-signed, so your browser will ask you to continue through a certificate warning.
 
 ## Configuration
 
@@ -65,6 +75,12 @@ Important agent variables:
 - `PUT /api/settings/server`
 - `POST /api/agents/register`
 - `POST /api/agents/:id/check-in`
+- `GET /api/agents/:id/monitors`
+- `POST /api/agents/:id/checks`
 - `GET /api/agents`
+- `GET /api/monitors`
+- `POST /api/monitors`
+- `PUT /api/monitors/:id`
+- `DELETE /api/monitors/:id`
 
 Protected server routes require a logged-in admin token. Agent routes require `Authorization: Bearer <SERVER_AGENT_KEY>`.
