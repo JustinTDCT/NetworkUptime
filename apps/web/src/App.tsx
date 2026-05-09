@@ -55,6 +55,8 @@ type AuthUser = {
   role: string;
 };
 
+type AppPage = "dashboard" | "settings";
+
 const api = async <TResponse,>(path: string, options: RequestInit = {}): Promise<TResponse> => {
   const response = await fetch(path, {
     credentials: "include",
@@ -78,6 +80,7 @@ export const App = () => {
   const [alertEvents, setAlertEvents] = useState<AlertEvent[]>([]);
   const [authenticated, setAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [activePage, setActivePage] = useState<AppPage>("dashboard");
   const [loginError, setLoginError] = useState("");
   const [monitorError, setMonitorError] = useState("");
   const [alertMessage, setAlertMessage] = useState("");
@@ -128,6 +131,7 @@ export const App = () => {
         body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget)))
       });
       await loadDashboard();
+      setActivePage("dashboard");
     } catch (error) {
       setLoginError(`Login failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
@@ -141,6 +145,7 @@ export const App = () => {
     setMonitors([]);
     setAlertSettings(null);
     setAlertEvents([]);
+    setActivePage("dashboard");
   };
 
   const createMonitor = async (event: FormEvent<HTMLFormElement>) => {
@@ -203,6 +208,7 @@ export const App = () => {
       <>
         <Header
           authenticated={authenticated}
+          activePage={activePage}
           currentUser={currentUser}
           onLogin={() => document.getElementById("login")?.scrollIntoView({ behavior: "smooth" })}
           onRefresh={() => loadDashboard().catch(() => undefined)}
@@ -229,13 +235,83 @@ export const App = () => {
     );
   }
 
+  if (activePage === "settings") {
+    return (
+      <>
+        <Header
+          authenticated={authenticated}
+          activePage={activePage}
+          currentUser={currentUser}
+          onDashboard={() => setActivePage("dashboard")}
+          onLogout={() => logout().catch(() => undefined)}
+          onRefresh={() => loadDashboard().catch(() => undefined)}
+          onSettings={() => setActivePage("settings")}
+        />
+        <main>
+          <div className="toolbar">
+            <div>
+              <h1>Settings</h1>
+              <p className="muted">Manage alerting and notification behavior.</p>
+            </div>
+          </div>
+
+          {alertSettings ? (
+            <section className="card">
+              <h2>Alert Settings</h2>
+              <form onSubmit={saveAlertSettings}>
+                <div className="grid">
+                  <label>
+                    Alert level
+                    <select name="alertLevel" defaultValue={alertSettings.alertLevel}>
+                      <option value="warning">Warning</option>
+                      <option value="down">Down</option>
+                    </select>
+                  </label>
+                  <label>
+                    Repeat
+                    <select name="repeat" defaultValue={alertSettings.repeat}>
+                      <option value="none">None</option>
+                      <option value="always">Always</option>
+                      <option value="status_change_only">Status change only</option>
+                    </select>
+                  </label>
+                  <label>
+                    Check delay seconds <input name="delaySeconds" type="number" min="5" defaultValue={alertSettings.delaySeconds} />
+                  </label>
+                  <label>
+                    Up/down warning cycles <input name="upDownWarningCycles" type="number" min="1" defaultValue={alertSettings.upDownWarningCycles} />
+                  </label>
+                  <label>
+                    Up/down down cycles <input name="upDownDownCycles" type="number" min="1" defaultValue={alertSettings.upDownDownCycles} />
+                  </label>
+                  <label>
+                    Webhook URL <input name="webhookUrl" placeholder="https://example.com/webhook" defaultValue={alertSettings.webhookUrl ?? ""} />
+                  </label>
+                </div>
+                <button>Save alert settings</button>
+              </form>
+              <p className="muted">{alertMessage}</p>
+            </section>
+          ) : (
+            <section className="card">
+              <p className="muted">Loading settings...</p>
+            </section>
+          )}
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <Header
         authenticated={authenticated}
+        activePage={activePage}
         currentUser={currentUser}
+        onDashboard={() => setActivePage("dashboard")}
         onLogout={() => logout().catch(() => undefined)}
         onRefresh={() => loadDashboard().catch(() => undefined)}
+        onSettings={() => setActivePage("settings")}
       />
       <main>
         <div className="toolbar">
@@ -337,45 +413,6 @@ export const App = () => {
             )}
           </section>
         </div>
-
-        {alertSettings ? (
-          <section className="card top-gap" id="settings">
-            <h2>Alert Settings</h2>
-            <form onSubmit={saveAlertSettings}>
-              <div className="grid">
-                <label>
-                  Alert level
-                  <select name="alertLevel" defaultValue={alertSettings.alertLevel}>
-                    <option value="warning">Warning</option>
-                    <option value="down">Down</option>
-                  </select>
-                </label>
-                <label>
-                  Repeat
-                  <select name="repeat" defaultValue={alertSettings.repeat}>
-                    <option value="none">None</option>
-                    <option value="always">Always</option>
-                    <option value="status_change_only">Status change only</option>
-                  </select>
-                </label>
-                <label>
-                  Check delay seconds <input name="delaySeconds" type="number" min="5" defaultValue={alertSettings.delaySeconds} />
-                </label>
-                <label>
-                  Up/down warning cycles <input name="upDownWarningCycles" type="number" min="1" defaultValue={alertSettings.upDownWarningCycles} />
-                </label>
-                <label>
-                  Up/down down cycles <input name="upDownDownCycles" type="number" min="1" defaultValue={alertSettings.upDownDownCycles} />
-                </label>
-                <label>
-                  Webhook URL <input name="webhookUrl" placeholder="https://example.com/webhook" defaultValue={alertSettings.webhookUrl ?? ""} />
-                </label>
-              </div>
-              <button>Save alert settings</button>
-            </form>
-            <p className="muted">{alertMessage}</p>
-          </section>
-        ) : null}
 
         <section className="card top-gap">
           <h2>Monitors</h2>
@@ -508,16 +545,22 @@ export const App = () => {
 
 const Header = ({
   authenticated,
+  activePage,
   currentUser,
+  onDashboard,
   onLogin,
   onLogout,
-  onRefresh
+  onRefresh,
+  onSettings
 }: {
   authenticated: boolean;
+  activePage: AppPage;
   currentUser: AuthUser | null;
+  onDashboard?: () => void;
   onLogin?: () => void;
   onLogout?: () => void;
   onRefresh: () => void;
+  onSettings?: () => void;
 }) => (
   <header>
     <div>
@@ -526,9 +569,14 @@ const Header = ({
     <div className="header-actions">
       <span className="muted">{currentUser ? `Logged in as ${currentUser.username}` : ""}</span>
       {authenticated ? (
-        <a className="button secondary" href="#settings">
+        <button className="secondary" disabled={activePage === "dashboard"} onClick={onDashboard}>
+          Dashboard
+        </button>
+      ) : null}
+      {authenticated ? (
+        <button className="secondary" disabled={activePage === "settings"} onClick={onSettings}>
           Settings
-        </a>
+        </button>
       ) : null}
       <button className="secondary" onClick={authenticated ? onLogout : onLogin}>
         {authenticated ? "Logout" : "Login"}
