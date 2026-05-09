@@ -86,6 +86,14 @@ Back up the SQLite database file:
 DATABASE_URL=file:/data/networkuptime.db BACKUP_DIR=/data/backups pnpm backup:sqlite
 ```
 
+## Tests
+
+Run the TypeScript API and agent checks test suite:
+
+```sh
+pnpm test
+```
+
 Important agent variables:
 
 - `AGENT_NAME`: friendly agent name shown in the UI later.

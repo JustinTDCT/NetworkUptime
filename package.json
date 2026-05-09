@@ -6,6 +6,7 @@
   "scripts": {
     "dev:server": "pnpm --filter @networkuptime/server dev",
     "dev:agent": "pnpm --filter @networkuptime/agent dev",
+    "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "prisma:generate": "pnpm --filter @networkuptime/db prisma:generate",
@@ -16,6 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "vitest": "latest"
   }
 }
