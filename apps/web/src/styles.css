@@ -147,6 +147,16 @@ form {
   gap: 0.8rem;
 }
 
+.checkbox-label {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.checkbox-label input {
+  width: auto;
+}
+
 .toolbar {
   align-items: center;
   display: flex;

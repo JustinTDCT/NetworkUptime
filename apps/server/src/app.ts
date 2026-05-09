@@ -134,6 +134,10 @@ const parseJsonList = (value: string): string[] => {
   }
 };
 
+const serverSettingsUpdateSchema = serverSettingsSchema.extend({
+  agentKey: z.union([z.string().uuid(), z.literal("")]).optional()
+});
+
 const webDistDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist");
 const webIndexPath = path.join(webDistDirectory, "index.html");
 
@@ -577,13 +581,13 @@ export const buildServer = async (config: ServerRuntimeConfig): Promise<FastifyI
   });
 
   app.put("/api/settings/server", { preHandler: requireUser }, async (request) => {
-    const input = serverSettingsSchema.parse(request.body);
+    const input = serverSettingsUpdateSchema.parse(request.body);
     const settings = await prisma.serverSettings.update({
       where: { id: "default" },
       data: {
         serverAddress: input.serverAddress,
         serverPort: input.serverPort,
-        agentKeyHash: await hashSecret(input.agentKey),
+        ...(input.agentKey ? { agentKeyHash: await hashSecret(input.agentKey) } : {}),
         ipListMode: ipModeToDb(input.ipListMode),
         ipAllowlist: JSON.stringify(input.ipAllowlist),
         ipBlocklist: JSON.stringify(input.ipBlocklist),

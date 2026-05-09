@@ -133,6 +133,34 @@ describe("server API", () => {
     expect(logout.headers["set-cookie"]).toContain("networkuptime_session=;");
   });
 
+  it("updates server settings without requiring agent key rotation", async () => {
+    const token = await login();
+    const update = await app.inject({
+      method: "PUT",
+      url: "/api/settings/server",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        serverAddress: "https://networkuptime.example:9443",
+        serverPort: 9443,
+        agentKey: "",
+        ipListMode: "allow_none_whitelist",
+        ipAllowlist: ["127.0.0.1"],
+        ipBlocklist: [],
+        publicReadOnly: true
+      }
+    });
+
+    expect(update.statusCode).toBe(200);
+    expect(update.json()).toMatchObject({
+      serverAddress: "https://networkuptime.example:9443",
+      serverPort: 9443,
+      ipListMode: "allow_none_whitelist",
+      ipAllowlist: ["127.0.0.1"],
+      ipBlocklist: [],
+      publicReadOnly: true
+    });
+  });
+
   it("registers an agent and assigns created monitors", async () => {
     const token = await login();
     const agentId = await registerAgent();
