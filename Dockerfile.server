@@ -1,0 +1,28 @@
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /certs \
+  && openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+    -keyout /certs/dev.key \
+    -out /certs/dev.crt \
+    -subj "/CN=networkuptime.local" \
+    -addext "subjectAltName=DNS:localhost,DNS:server,IP:127.0.0.1"
+
+RUN corepack enable && corepack prepare pnpm@10 --activate
+
+COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
+COPY apps ./apps
+COPY packages ./packages
+
+RUN pnpm install --frozen-lockfile=false
+RUN pnpm --filter @networkuptime/db prisma:generate
+
+EXPOSE 8443
+
+CMD ["sh", "-c", "pnpm --filter @networkuptime/db prisma:push && pnpm --filter @networkuptime/server start"]

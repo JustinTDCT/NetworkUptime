@@ -1,0 +1,44 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    environment:
+      DATABASE_URL: file:/data/networkuptime.db
+      HOST: 0.0.0.0
+      SERVER_ADDRESS: ${SERVER_ADDRESS:-https://localhost:8443}
+      SERVER_PORT: ${SERVER_PORT:-8443}
+      SERVER_AGENT_KEY: ${SERVER_AGENT_KEY:-00000000-0000-4000-8000-000000000001}
+      JWT_SECRET: ${JWT_SECRET:-change-this-development-secret}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      PUBLIC_READ_ONLY: ${PUBLIC_READ_ONLY:-false}
+      TLS_CERT_FILE: /certs/dev.crt
+      TLS_KEY_FILE: /certs/dev.key
+    ports:
+      - "${SERVER_PORT:-8443}:${SERVER_PORT:-8443}"
+    volumes:
+      - server-data:/data
+
+  agent:
+    profiles:
+      - agent
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    environment:
+      AGENT_NAME: ${AGENT_NAME:-Local Agent}
+      AGENT_DESCRIPTION: ${AGENT_DESCRIPTION:-Agent running beside the server}
+      SERVER_URL: ${AGENT_SERVER_URL:-https://server:8443}
+      SERVER_KEY: ${SERVER_AGENT_KEY:-00000000-0000-4000-8000-000000000001}
+      AGENT_STATE_PATH: /data/agent-state.json
+      AGENT_CHECK_IN_INTERVAL_SECONDS: ${AGENT_CHECK_IN_INTERVAL_SECONDS:-60}
+      NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-0}
+    volumes:
+      - agent-data:/data
+    depends_on:
+      - server
+
+volumes:
+  server-data:
+  agent-data:

@@ -1,0 +1,24 @@
+{
+  "server": {
+    "serverAddress": "https://monitor.example.com:8443",
+    "serverPort": 8443,
+    "agentKey": "00000000-0000-4000-8000-000000000001",
+    "ipListMode": "allow_all_blocklist",
+    "ipAllowlist": [],
+    "ipBlocklist": [],
+    "publicReadOnly": false
+  },
+  "alerts": {
+    "alertLevel": "down",
+    "repeat": "status_change_only",
+    "delaySeconds": 60,
+    "upDownWarningCycles": 2,
+    "upDownDownCycles": 4,
+    "latencyCycles": 3,
+    "latencyWarningMs": 250,
+    "latencyDownMs": 1000,
+    "sslWarningDays": 30,
+    "sslDownDays": 7,
+    "httpCycles": 3
+  }
+}

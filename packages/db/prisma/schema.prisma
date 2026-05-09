@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum IpListMode {
+  ALLOW_ALL_BLOCKLIST
+  ALLOW_NONE_WHITELIST
+}
+
+enum AgentStatus {
+  PENDING
+  ACTIVE
+  DISABLED
+}
+
+enum MonitorType {
+  SSL
+  UP_DOWN
+  HTTP_HTTPS
+}
+
+enum MonitorStatus {
+  UNKNOWN
+  UP
+  WARNING
+  DOWN
+  SUPPRESSED
+}
+
+enum AlertLevel {
+  WARNING
+  DOWN
+}
+
+enum AlertRepeat {
+  NONE
+  ALWAYS
+  STATUS_CHANGE_ONLY
+}
+
+model User {
+  id           String   @id @default(uuid())
+  fullName     String
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ServerSettings {
+  id             String     @id @default("default")
+  serverAddress  String
+  serverPort     Int        @default(8443)
+  agentKeyHash   String
+  ipListMode     IpListMode @default(ALLOW_ALL_BLOCKLIST)
+  ipAllowlist    String     @default("[]")
+  ipBlocklist    String     @default("[]")
+  publicReadOnly Boolean    @default(false)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+model AlertSettings {
+  id                  String      @id @default("global")
+  alertLevel          AlertLevel  @default(DOWN)
+  repeat              AlertRepeat @default(STATUS_CHANGE_ONLY)
+  delaySeconds        Int         @default(60)
+  upDownWarningCycles Int         @default(2)
+  upDownDownCycles    Int         @default(4)
+  latencyCycles       Int         @default(3)
+  latencyWarningMs    Int         @default(250)
+  latencyDownMs       Int         @default(1000)
+  sslWarningDays      Int         @default(30)
+  sslDownDays         Int         @default(7)
+  httpCycles          Int         @default(3)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+}
+
+model Agent {
+  id          String      @id
+  name        String
+  description String      @default("")
+  status      AgentStatus @default(ACTIVE)
+  version     String      @default("0.1.0")
+  sourceIp    String?
+  lastCheckIn DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  monitors    Monitor[]
+}
+
+model Monitor {
+  id               String         @id @default(uuid())
+  friendlyName     String
+  description      String         @default("")
+  target           String
+  type             MonitorType
+  status           MonitorStatus  @default(UNKNOWN)
+  overrideSettings String?
+  parentAgentId    String
+  parentAgent      Agent          @relation(fields: [parentAgentId], references: [id])
+  parentMonitorId  String?
+  parentMonitor    Monitor?       @relation("MonitorParent", fields: [parentMonitorId], references: [id])
+  childMonitors    Monitor[]      @relation("MonitorParent")
+  dependencies     MonitorDependency[] @relation("MonitorDependencyParent")
+  dependents       MonitorDependency[] @relation("MonitorDependencyChild")
+  checks           MonitorCheck[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model MonitorDependency {
+  id              String  @id @default(uuid())
+  parentMonitorId String
+  childMonitorId  String
+  parentMonitor   Monitor @relation("MonitorDependencyParent", fields: [parentMonitorId], references: [id], onDelete: Cascade)
+  childMonitor    Monitor @relation("MonitorDependencyChild", fields: [childMonitorId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+
+  @@unique([parentMonitorId, childMonitorId])
+}
+
+model MonitorCheck {
+  id             String        @id @default(uuid())
+  monitorId      String
+  monitor        Monitor       @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  status         MonitorStatus
+  latencyMs      Int?
+  sslValid       Boolean?
+  sslExpiresAt   DateTime?
+  sslSelfSigned  Boolean?
+  httpMatched    Boolean?
+  httpStatusCode Int?
+  message        String?
+  rawDetails     String?
+  checkedAt      DateTime      @default(now())
+
+  @@index([monitorId, checkedAt])
+}

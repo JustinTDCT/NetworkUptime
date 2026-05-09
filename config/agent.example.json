@@ -1,0 +1,7 @@
+{
+  "name": "Branch Office Agent",
+  "description": "Agent located at the branch office network edge",
+  "serverUrl": "https://monitor.example.com:8443",
+  "serverKey": "00000000-0000-4000-8000-000000000001",
+  "allowInsecureLocalhost": false
+}

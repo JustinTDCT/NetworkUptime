@@ -1,0 +1,18 @@
+{
+  "name": "networkuptime",
+  "private": true,
+  "description": "Docker-based network uptime monitoring server and agent.",
+  "type": "module",
+  "scripts": {
+    "dev:server": "pnpm --filter @networkuptime/server dev",
+    "dev:agent": "pnpm --filter @networkuptime/agent dev",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "prisma:generate": "pnpm --filter @networkuptime/db prisma:generate",
+    "prisma:push": "pnpm --filter @networkuptime/db prisma:push"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "typescript": "latest"
+  }
+}

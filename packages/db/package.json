@@ -1,0 +1,22 @@
+{
+  "name": "@networkuptime/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:push": "prisma db push --schema prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^6"
+  },
+  "devDependencies": {
+    "prisma": "^6",
+    "typescript": "latest"
+  }
+}
