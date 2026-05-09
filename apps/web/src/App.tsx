@@ -102,6 +102,7 @@ export const App = () => {
   const [publicReadOnly, setPublicReadOnly] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [activePage, setActivePage] = useState<AppPage>("dashboard");
+  const [showLogin, setShowLogin] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [monitorError, setMonitorError] = useState("");
   const [alertMessage, setAlertMessage] = useState("");
@@ -163,6 +164,7 @@ export const App = () => {
       });
       await loadDashboard();
       setActivePage("dashboard");
+      setShowLogin(false);
     } catch (error) {
       setLoginError(`Login failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
@@ -179,6 +181,7 @@ export const App = () => {
     setServerSettings(null);
     setAlertEvents([]);
     setActivePage("dashboard");
+    setShowLogin(false);
     await loadDashboard().catch(() => undefined);
   };
 
@@ -266,7 +269,7 @@ export const App = () => {
     await loadDashboard();
   };
 
-  if (!authenticated && !publicReadOnly) {
+  if (!authenticated && (!publicReadOnly || showLogin)) {
     return (
       <>
         <Header
@@ -424,6 +427,7 @@ export const App = () => {
         activePage={activePage}
         currentUser={currentUser}
         onDashboard={() => setActivePage("dashboard")}
+        onLogin={() => setShowLogin(true)}
         onLogout={() => logout().catch(() => undefined)}
         onRefresh={() => loadDashboard().catch(() => undefined)}
         onSettings={() => setActivePage("settings")}
