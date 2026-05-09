@@ -67,9 +67,13 @@ type AuthUser = {
 type AppPage = "dashboard" | "settings";
 
 const api = async <TResponse,>(path: string, options: RequestInit = {}): Promise<TResponse> => {
+  const headers = {
+    ...(options.body ? { "content-type": "application/json" } : {}),
+    ...(options.headers ?? {})
+  };
   const response = await fetch(path, {
     credentials: "include",
-    headers: { "content-type": "application/json", ...(options.headers ?? {}) },
+    headers,
     ...options
   });
 
