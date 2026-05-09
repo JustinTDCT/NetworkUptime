@@ -171,7 +171,8 @@ export const App = () => {
   const createMonitor = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMonitorError("");
-    const payload = Object.fromEntries(new FormData(event.currentTarget)) as Record<string, unknown>;
+    const form = event.currentTarget;
+    const payload = Object.fromEntries(new FormData(form)) as Record<string, unknown>;
     const overrideSettings: Record<string, number> = {};
     if (payload.upDownWarningCycles) {
       overrideSettings.upDownWarningCycles = Number(payload.upDownWarningCycles);
@@ -187,7 +188,7 @@ export const App = () => {
 
     try {
       await api("/api/monitors", { method: "POST", body: JSON.stringify(payload) });
-      event.currentTarget.reset();
+      form.reset();
       await loadDashboard();
     } catch (error) {
       setMonitorError(`Create failed: ${error instanceof Error ? error.message : "Unknown error"}`);
