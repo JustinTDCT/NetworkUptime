@@ -81,7 +81,12 @@ const api = async <TResponse,>(path: string, options: RequestInit = {}): Promise
     throw new Error(await response.text());
   }
 
-  return response.json() as Promise<TResponse>;
+  if (response.status === 204) {
+    return undefined as TResponse;
+  }
+
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as TResponse;
 };
 
 const statusPill = (status: string) => <span className={`pill ${status.toLowerCase()}`}>{status}</span>;

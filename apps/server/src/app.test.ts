@@ -206,6 +206,25 @@ describe("server API", () => {
     expect(assignments.json<{ monitors: Array<{ friendlyName: string; type: string }> }>().monitors).toEqual(
       expect.arrayContaining([expect.objectContaining({ friendlyName: "Ping test", type: "up_down" })])
     );
+
+    const monitorId = createMonitor.json<{ monitor: { id: string } }>().monitor.id;
+    const deleteMonitor = await app.inject({
+      method: "DELETE",
+      url: `/api/monitors/${monitorId}`,
+      headers: { authorization: `Bearer ${token}` }
+    });
+
+    expect(deleteMonitor.statusCode).toBe(204);
+
+    const monitors = await app.inject({
+      method: "GET",
+      url: "/api/monitors",
+      headers: { authorization: `Bearer ${token}` }
+    });
+
+    expect(monitors.json<{ monitors: Array<{ id: string }> }>().monitors).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: monitorId })])
+    );
   });
 
   it("moves up/down monitors through warning and down thresholds", async () => {
